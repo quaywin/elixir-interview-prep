@@ -1,6 +1,6 @@
 # 🎯 Lộ trình Ôn tập 2 Ngày - Senior Elixir Interview (10pearls)
 
-Thư mục này chứa toàn bộ tài liệu lý thuyết, câu hỏi phỏng vấn thực tế và bài tập coding giúp bạn chuẩn bị nhanh nhất trong **2 ngày** cho buổi phỏng vấn tại 10pearls.
+Thư mục này chứa toàn bộ tài liệu lý thuyết, câu hỏi phỏng vấn thực tế, cẩm nang kiến thức bổ trợ và bài tập coding giúp bạn chuẩn bị nhanh nhất trong **2 ngày** cho buổi phỏng vấn tại 10pearls.
 
 ---
 
@@ -43,6 +43,16 @@ Thư mục này chứa toàn bộ tài liệu lý thuyết, câu hỏi phỏng v
         *   Mã nguồn: [batcher_practice.exs](exercises/06_batch_processor/batcher_practice.exs)
         *   Tài liệu giải thích: [batcher_explain.md](exercises/06_batch_processor/batcher_explain.md)
 *   **System Design & Mock (Tối):** Thiết kế Notification Gateway (100k CCU) và chuẩn bị các câu chuyện STAR.
+
+---
+
+## 📚 Cẩm Nang Luyện Tập Kiến Thức Bổ Trợ (Phi Elixir)
+
+Để đạt điểm tối đa trong các vòng phỏng vấn Senior mở rộng, hãy chủ động ôn tập thêm các tài liệu hướng dẫn sau:
+
+1.  **[Cẩm nang Thiết kế Hệ thống (System Design Cookbook)](system_design_prep.md):** Khung sườn 4 bước trả lời phỏng vấn kiến trúc, kịch bản thiết kế hệ thống đấu giá trực tuyến (Auction System) xử lý race condition và hệ thống gửi tin nhắn diện rộng (Mass Notification) xử lý rate limits/backpressure.
+2.  **[Cẩm nang Phỏng vấn Hành vi & Dẫn dắt (Behavioral & Leadership)](behavioral_prep.md):** Cách xây dựng câu chuyện theo công thức STAR. Kịch bản giải quyết bất đồng ý kiến kỹ thuật trong team và cách mentor cho thành viên mới làm quen với lập trình hàm (FP).
+3.  **[Cẩm nang DevOps & Giám sát (DevOps & Observability Cookbook)](devops_observability_prep.md):** Viết Dockerfile tối ưu kích thước image (<80MB) tăng tính bảo mật, và cấu hình giám sát các chỉ số bộ nhớ/process BEAM VM trên Prometheus/Grafana.
 
 ---
 
