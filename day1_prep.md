@@ -1,71 +1,189 @@
-# 📔 Ngày 1: Deep Dive BEAM VM, OTP Internals & Database Optimizations
+# 📔 Ngày 1: Kiến Trúc BEAM VM, OTP Internals & Cơ Chế Cơ Sở Dữ Liệu (Ecto)
 
-## 1. BEAM VM Internals (Kiến thức nâng cao dành cho Senior)
-
-### Process Scheduling & Reductions
-*   **Schedulers:** Khi BEAM khởi động, nó tự động nhận diện số lượng CPU core logic của máy chủ và khởi chạy số lượng Scheduler tương ứng (1 scheduler/core). Mỗi Scheduler chạy trên một OS thread riêng biệt.
-*   **Run Queues:** Mỗi scheduler sở hữu một run queue riêng chứa các process sẵn sàng chạy. Để tránh hiện tượng lệch tải (một core bận rộn còn core khác rảnh rỗi), BEAM sử dụng cơ chế **Work Stealing**: một scheduler rảnh rỗi sẽ chủ động lấy bớt process từ run queue của scheduler đang bị quá tải.
-*   **Reduction Budget (Preemptive Scheduling):** 
-    *   Mỗi thao tác tính toán hoặc hàm gọi trong BEAM được gán một chi phí gọi là **reduction**. Mỗi process khi được lập lịch chạy sẽ được cấp một quota là **2000 reductions**.
-    *   Khi process tiêu thụ hết 2000 reductions này, scheduler sẽ lưu trạng thái (context switch) của process đó lại, đẩy nó xuống cuối run queue và nhường quyền cho process khác.
-    *   *Ý nghĩa:* Cơ chế preemptive scheduling đảm bảo tính **Soft Real-time** và độ trễ cực thấp (low latency) cho ứng dụng. Không một process tính toán nặng nào (ví dụ: vòng lặp vô hạn) có thể làm treo toàn bộ hệ thống hoặc ảnh hưởng tới việc nhận/gửi request của các process khác.
-
-### Garbage Collection (Generational & Per-process Heap)
-*   **Vùng nhớ Heap riêng biệt:** Mỗi process BEAM có Heap và Stack riêng, bắt đầu với kích thước cực kỳ nhỏ (~309 words, khoảng 2.5 KB). Stack lớn dần từ trên xuống, Heap lớn dần từ dưới lên trong cùng một vùng nhớ được cấp phát.
-*   **Generational GC:** BEAM áp dụng cơ chế GC theo thế hệ (Generational GC) gồm 2 phân vùng:
-    *   **Young Generation (New Heap):** Nơi chứa các dữ liệu mới được tạo ra. GC chạy ở đây rất thường xuyên (Minor GC) bằng thuật toán Copying Collector (chép các dữ liệu còn sống sang vùng nhớ mới và dọn sạch vùng cũ).
-    *   **Old Generation (Old Heap):** Khi các dữ liệu sống sót qua một số chu kỳ Minor GC nhất định, chúng được chuyển sang Old Heap. GC ở đây chạy ít thường xuyên hơn (Major GC) vì chi phí dọn dẹp lớn hơn.
-*   **Binary Heap (Off-heap storage):** 
-    *   Các dữ liệu kiểu binary có kích thước **lớn hơn 64 bytes** (gọi là *Refc Binaries*) không được lưu trữ trực tiếp trên process heap của từng process.
-    *   Thay vào đó, chúng được lưu trữ ở một vùng nhớ dùng chung toàn cục (Global Shared Heap). Trực tiếp trên process heap chỉ lưu một con trỏ tham chiếu (size 24 bytes) trỏ tới vùng nhớ dùng chung này kèm theo một bộ đếm tham chiếu (Reference Counter).
-    *   *Lưu ý rò rỉ bộ nhớ (Memory Leak):* Nếu một process giữ một tham chiếu nhỏ tới một Binary lớn (ví dụ: parse một file JSON 10MB rồi giữ lại một key nhỏ 10 bytes), cả khối 10MB kia sẽ không thể giải phóng khỏi Global Heap cho đến khi process đó chết hoặc chạy GC thu hồi con trỏ tham chiếu đó.
-
-### Triết lý "Let it crash" & Fault Tolerance
-*   Tránh việc bọc mọi dòng code bằng `try/catch` hoặc `begin/rescue` vì nó làm bẩn codebase và khó xác định trạng thái nhất quán của dữ liệu.
-*   Nếu có lỗi bất ngờ, hãy để process đó crash tự nhiên. Supervisor sẽ chịu trách nhiệm giám sát và tái tạo lại process đó với trạng thái khởi tạo sạch sẽ, an toàn đã biết trước.
+Tài liệu này không cung cấp các câu trả lời ngắn để học thuộc lòng. Nó giải thích **bản chất cơ học (how it works under the hood)** và **lý do thiết kế (why it was designed this way)** của BEAM VM, OTP và Ecto để giúp bạn có tư duy hệ thống của một Senior Engineer.
 
 ---
 
-## 2. Erlang/OTP Architecture & State Management
+## 1. Cơ Chế Hoạt Động Của BEAM VM (Erlang Run-Time System - ERTS)
 
-### Tránh nghẽn cổ chai (Bottlenecks) trong GenServer
-*   **Nguyên nhân:** Bản chất GenServer xử lý các tin nhắn tuần tự (Single-threaded execution model). Nếu hàng ngàn process khác cùng gọi đồng bộ (`handle_call`) tới duy nhất một GenServer trung tâm, nó sẽ tạo ra hàng đợi mailbox khổng lồ và gây nghẽn (bottleneck).
-*   **Các giải pháp khắc phục:**
-    1.  **Phân mảnh trạng thái (Sharding/Partitioning):** Sử dụng `PartitionSupervisor` để chia nhỏ tải trọng ra nhiều GenServer workers song song dựa trên một hashing key (ví dụ: hash `user_id` để đưa request về đúng phân vùng worker).
-    2.  **Đọc/Ghi song song bằng ETS (Erlang Term Storage):** ETS cho phép đọc ghi dữ liệu in-memory trực tiếp từ bất kỳ process nào với tốc độ cực nhanh mà không cần đi qua mailbox của một GenServer. Hãy dùng GenServer làm Owner ghi dữ liệu, còn các process khác đọc trực tiếp từ ETS table.
-    3.  **Xử lý bất đồng bộ (Offloading):** Với các tác vụ tốn thời gian (như gửi email, gọi API bên thứ ba), GenServer không được xử lý trực tiếp trong `handle_call`. Thay vào đó, nó nên spawn một `Task` hoặc sử dụng `Task.Supervisor` để làm việc đó độc lập, sau đó trả về kết quả bất đồng bộ.
+### 1.1. Luồng Lập Lịch (Preemptive Scheduling Mechanics)
+Trong hầu hết các hệ điều hành và ngôn ngữ lập trình (như Go hay NodeJS), lập lịch là **Cooperative (Cộng tác)**. Tức là một luồng (thread/goroutine) phải chủ động nhường quyền (yield) khi gặp các lệnh I/O hoặc gọi hàm đặc biệt để luồng khác được chạy. Nếu bạn viết một vòng lặp vô hạn tính toán toán học, nó sẽ chặn hoàn toàn thread đó.
 
-### Supervision Trees & Strategies
-*   **one_for_one:** Thích hợp cho các worker độc lập. Một chết, một sống lại.
-*   **one_for_all:** Nếu các child processes phụ thuộc lẫn nhau, thiếu một đứa thì hệ thống không hoạt động được. Ví dụ: Process A đọc socket, Process B ghi log, Process C phân tích cú pháp. Một đứa chết -> tất cả cùng khởi động lại.
-*   **rest_for_one:** Các child processes được khởi tạo theo thứ tự tuyến tính phụ thuộc. Nếu process khởi tạo trước crash, các process khởi tạo sau nó sẽ bị kéo đổ theo và cùng restart.
-*   **DynamicSupervisor:** Chuyên dùng để khởi chạy động các worker trong runtime. Cần lưu ý sử dụng tùy chọn `restart: :transient` hoặc `:temporary` cho các worker động này để tránh việc supervisor cố gắng restart vô hạn một session đã logout hoặc kết thúc nhiệm vụ bình thường.
+BEAM VM giải quyết vấn đề này bằng **Preemptive Scheduling (Lập lịch phân thì/chiếm quyền)** dựa trên khái niệm **Reductions**:
+
+```
++-------------------------------------------------------------------+
+|                           Scheduler Thread                        |
++-------------------------------------------------------------------+
+       |
+       v
++-----------------+
+|   Run Queue     | ---> [Process A] -> [Process B] -> [Process C]
++-----------------+
+       |
+       | 1. Lấy Process A ra chạy
+       v
++-------------------------------------------------------------------+
+| Execute: Process A                                                |
+| - Mỗi hàm gọi, phép toán, gửi message = 1 Reduction               |
+| - Giới hạn tối đa (Budget): 2000 Reductions                       |
++-------------------------------------------------------------------+
+       |
+       | 2. Khi tiêu thụ hết 2000 Reductions (hoặc bị block bởi I/O)
+       v
++-------------------------------------------------------------------+
+| Context Switch:                                                   |
+| - Lưu Program Counter (PC) và thanh ghi của Process A             |
+| - Đẩy Process A xuống cuối Run Queue                              |
+| - Lấy Process B lên chạy tiếp                                     |
++-------------------------------------------------------------------+
+```
+
+*   **Reduction là gì?** Nó là một đơn vị đo lường công việc của BEAM VM. Mỗi lần gọi hàm, thực thi một BIF (Built-in Function), hay thực hiện một phép so sánh pattern matching đều tiêu tốn reductions.
+*   **Context Switch trong BEAM siêu nhẹ:** Khác với hệ điều hành (phải chuyển đổi không gian địa chỉ ảo, flush Page Table, chuyển từ User Mode sang Kernel Mode), BEAM Process chỉ là một cấu trúc dữ liệu trong user-space. Context switch chỉ đơn giản là lưu trữ vài thanh ghi con trỏ (Stack Pointer, Program Counter) vào vùng nhớ PCB (Process Control Block) của process đó. Chi phí này mất chưa đến vài nano-giây.
+*   **Work Stealing:** Mỗi CPU Core vật lý có 1 Scheduler Thread quản lý 1 Run Queue riêng. Nếu Run Queue của Scheduler 1 trống, nó sẽ khóa (lock) và "ăn trộm" (steal) một số process từ cuối Run Queue của Scheduler 2 để đảm bảo tất cả các core đều hoạt động đồng đều, tối ưu hóa phần cứng đa nhân.
 
 ---
 
-## 3. Database (Ecto & PostgreSQL) & Web APIs (Phoenix & Absinthe)
+### 1.2. Kiến Trúc Bộ Nhớ & Garbage Collection (GC)
+Để hiểu tại sao BEAM VM không bao giờ bị hiện tượng "Stop-the-world" (toàn bộ ứng dụng dừng lại để dọn rác như Java), chúng ta cần nhìn vào cấu trúc bộ nhớ của từng Process:
 
-### Tối ưu hóa truy vấn Ecto
-1.  **Giải quyết N+1 Query triệt để:**
-    *   *Cách 1 (Preload):* `Repo.all(from p in Post, preload: [:comments])` - Ecto sẽ chạy 2 câu truy vấn riêng biệt: một câu lấy Posts, một câu lấy tất cả Comments của các Posts đó, rồi tự map lại ở RAM.
-    *   *Cách 2 (Inner/Left Join):* `from p in Post, join: c in assoc(p, :comments), preload: [comments: c]` - Ecto chạy duy nhất 1 câu SQL dùng `JOIN` để lấy toàn bộ dữ liệu. Phù hợp khi bạn cần lọc dữ liệu Post dựa trên điều kiện của Comment.
-2.  **Ecto.Multi vs DB Transactions:**
-    *   Không nên viết code lồng nhau dạng `Repo.transaction(fn -> ... end)` nếu có nhiều logic nghiệp vụ phức tạp vì nó khó debug, khó viết unit test độc lập cho từng phần.
-    *   `Ecto.Multi` là một cấu trúc dữ liệu mô tả các bước giao dịch dưới dạng một pipeline. Bạn có thể xây dựng nó một cách linh hoạt, truyền qua các module khác nhau trước khi thực thi thực tế bằng `Repo.transaction(multi)`.
-3.  **Khóa dòng (Database Row Locking):**
-    *   Sử dụng `lock: "FOR UPDATE"` trong Ecto query khi cập nhật số dư tài khoản hoặc số lượng tồn kho để ngăn chặn hiện tượng **Lost Update** khi 2 transactions chạy song song cùng đọc một giá trị và ghi đè lên nhau.
+```
++-----------------------------------------------------------------------+
+| BEAM Process Memory Layout                                            |
+|                                                                       |
+|  +-----------------------------------------------------------------+  |
+|  | Process Control Block (PCB)                                     |  |
+|  | - Pid, Status, Mailbox pointers, Links/Monitors list            |  |
+|  +-----------------------------------------------------------------+  |
+|  | Stack (Lớn dần từ trên xuống)                                   |  |
+|  | - Chứa biến cục bộ, đối số hàm, địa chỉ quay lại (return)       |  |
+|  |            |                                                    |  |
+|  |            v                                                    |  |
+|  |                                                                 |  |
+|  |            ^                                                    |  |
+|  |            |                                                    |  |
+|  | Heap (Lớn dần từ dưới lên)                                      |  |
+|  | - Chứa Tuples, Lists, Maps, Heap Binaries (< 64 bytes)          |  |
+|  +-----------------------------------------------------------------+  |
+|                                                                       |
++-----------------------------------------------------------------------+
+```
 
-### Tối ưu hóa GraphQL API với Absinthe
-*   **Vấn đề N+1 trong GraphQL:** Mỗi field resolver trong Absinthe chạy độc lập. Nếu user truy vấn danh sách `posts` kèm theo `author` của mỗi post, Absinthe sẽ gọi resolver của `author` N lần.
-*   **Giải pháp (Absinthe Dataloader):**
-    *   Dataloader là một công cụ giúp gom nhóm (batching) các request truy vấn database.
-    *   Thay vì chạy câu query ngay lập tức, Dataloader sẽ tạm dừng thực thi của resolver, gom tất cả các ID cần tìm kiếm, chạy duy nhất một câu query `SELECT ... WHERE id IN (...)` để lấy toàn bộ data, sau đó phân phối lại kết quả cho các resolver.
+*   **Tại sao lại dùng Private Heap (Bộ nhớ riêng)?**
+    *   **Không có lock contention:** Vì mỗi process sở hữu vùng bộ nhớ riêng, nó không cần xin khóa (mutex lock) để cấp phát bộ nhớ mới. Việc cấp phát chỉ đơn giản là tăng con trỏ Heap Pointer (Bumping allocator), cực kỳ nhanh.
+    *   **GC độc lập:** GC chỉ chạy trên Heap của duy nhất process đang bị thiếu bộ nhớ. 99% các process khác vẫn chạy bình thường.
+    *   **Cái giá phải trả (Trade-off):** Khi gửi message giữa Process A và Process B, dữ liệu bắt buộc phải được **sao chép (deep copy)** từ Heap của A sang Heap của B. Việc này tốn chi phí CPU nếu message có kích thước lớn.
+*   **Cơ chế Generational GC (GC theo thế hệ):**
+    *   **Young Heap (Thế hệ mới):** Hầu hết các biến trong lập trình hàm có vòng đời rất ngắn. Khi dọn rác ở Young Heap, BEAM dùng thuật toán *Copying Collector*. Nó quét các biến còn sống từ Stack, sao chép chúng sang một vùng nhớ mới tinh (To-space) nằm liền kề nhau để chống phân mảnh, sau đó giải phóng toàn bộ vùng nhớ cũ (From-space).
+    *   **Old Heap (Thế hệ cũ):** Nếu một biến sống sót qua nhiều lần Minor GC, nó được "thăng cấp" (promoted) chuyển sang Old Heap. Khi Old Heap đầy, Major GC mới chạy với thuật toán *Sweep* (chi phí cao hơn).
+*   **Cơ chế lưu trữ Binary (Off-heap Binaries):**
+    *   Nếu lưu một chuỗi HTML 5MB trên Heap của Process A, khi gửi sang Process B sẽ mất 5MB bộ nhớ và tốn thời gian copy.
+    *   **Giải pháp của BEAM:** Bất kỳ binary nào **> 64 bytes** (gọi là *Refc Binary*) được lưu trữ ở **Global Shared Heap** ngoài các process.
+    *   Trên Heap của Process A và B lúc này chỉ chứa một **ProcBin** (24 bytes) gồm con trỏ trỏ tới vùng nhớ Global đó và dung lượng của nó.
+    *   **Rò rỉ bộ nhớ với Sub-binaries:** Khi bạn parse một chuỗi JSON khổng lồ 20MB, lấy ra một token nhỏ `"user_123"` (18 bytes). Nếu bạn giữ token này trong state của GenServer, do nó là một lát cắt (slice) của binary gốc, nó vẫn giữ tham chiếu tới toàn bộ khối 20MB kia. Hệ thống sẽ không thể giải phóng 20MB này khỏi Global Heap.
+    *   *Cách khắc phục:* Gọi `:binary.copy("user_123")`. Hàm này sẽ copy chuỗi 18 bytes đó vào trực tiếp Heap nội bộ của process (dưới dạng Heap Binary vì < 64 bytes) và ngắt kết nối với khối 20MB ban đầu, cho phép GC dọn dẹp khối 20MB kia.
 
 ---
 
-## 🚀 Câu hỏi phỏng vấn thử thách Ngày 1
+## 2. Bản Chất Hóa Học Của OTP (Open Telecom Platform)
 
-1.  *Làm thế nào để truyền một lượng lớn dữ liệu (> 1GB) giữa hai process Elixir trên cùng một node mà không làm tràn bộ nhớ heap?*
-    *   **Trả lời:** Sử dụng các Binary lớn hơn 64 bytes. Do chúng được lưu trữ ở Off-heap (Binary Heap toàn cục), việc truyền message chứa binary này giữa các process chỉ là việc copy một con trỏ tham chiếu (24 bytes) và tăng Reference Counter, hoàn toàn không copy dữ liệu thực tế giúp tốc độ truyền tải cực nhanh và tiết kiệm bộ nhớ.
-2.  *Khi nào bạn nên dùng `DynamicSupervisor` kết hợp với `Registry` và làm sao để xử lý race condition khi 2 request đồng thời yêu cầu khởi tạo worker cho cùng một ID?*
-    *   **Trả lời:** Ta dùng DynamicSupervisor + Registry để quản lý các thực thể động như Session chat, User shopping cart. Để tránh race condition khi khởi tạo trùng, ta cấu hình Registry ở dạng `:unique`. Khi gọi `DynamicSupervisor.start_child`, Registry sẽ chặn việc đăng ký trùng tên và trả về lỗi `{:error, {:already_started, pid}}`. Chúng ta sẽ match lỗi này và lấy trực tiếp `pid` của process đang chạy thay vì khởi tạo mới.
+### 2.1. GenServer Thực Chất Là Gì?
+Đừng nghĩ GenServer là một class hay một magic component. Dưới góc độ BEAM, một GenServer thực chất là một **Erlang Process chạy một vòng lặp đệ quy đuôi vô hạn (infinite tail-recursive loop)**:
+
+```elixir
+defmodule MyGenServer do
+  # Hàm khởi chạy process
+  def start_link(init_arg) do
+    spawn_link(fn -> loop(init_arg) end)
+  end
+
+  # Vòng lặp nhận tin nhắn
+  defp loop(state) do
+    receive do
+      {:call, from, :get_state} ->
+        send(from, {:reply, state})
+        loop(state) # Tiếp tục đệ quy để giữ process sống
+
+      {:cast, {:update, new_val}} ->
+        new_state = process_update(state, new_val)
+        loop(new_state) # Cập nhật state mới cho vòng lặp tiếp theo
+    end
+  end
+end
+```
+
+*   **Mailbox (Hộp thư):** Mỗi process có một hàng đợi tin nhắn là một Single Linked List. Khi bạn gửi message tới process, message được chép vào cuối list này.
+*   **Selective Receive (Nhận chọn lọc):** Khi lệnh `receive` chạy, BEAM sẽ duyệt từ đầu Mailbox để tìm tin nhắn khớp với pattern. Nếu tin nhắn không khớp, nó sẽ được đưa vào một hàng đợi tạm thời (save queue). Nếu Mailbox của bạn tích tụ hàng triệu tin nhắn không khớp, BEAM sẽ phải duyệt qua hàng triệu phần tử mỗi khi có tin nhắn mới đến, gây sụt giảm hiệu năng nghiêm trọng.
+*   **Tại sao `init` lại blocking?** Khi Supervisor gọi `start_link`, nó sử dụng cơ chế đồng bộ (`GenServer.start_link`). Supervisor process sẽ block hoàn toàn để chờ phản hồi từ hàm `init/1` của child process. Nếu `init/1` gọi API bên ngoài mất 10 giây, toàn bộ quá trình boot của ứng dụng sẽ bị treo, dẫn đến Supervisor tự crash do vượt quá thời gian timeout (thường là 5000ms).
+*   **Cơ chế `handle_continue`:**
+    ```
+    Supervisor gọi start_link() -> Chạy init() 
+                                      | (Trả về {:ok, state, {:continue, :step}})
+                                      v
+    Supervisor nhận ok, giải phóng block (App tiếp tục boot)
+                                      |
+                                      v
+    GenServer lập tức tự gửi message {:continue, :step} cho chính nó
+    (Tin nhắn này được chèn vào đầu Mailbox, chạy trước mọi request từ bên ngoài)
+                                      |
+                                      v
+                               Chạy handle_continue()
+    ```
+
+---
+
+### 2.2. Tránh Bottleneck (Nghẽn cổ chai)
+Vì GenServer xử lý tin nhắn trong Mailbox theo cơ chế **tuần tự (FIFO - First In First Out)** trên một luồng duy nhất, nếu bạn có 10,000 requests/giây gọi tới cùng một GenServer để đọc thông tin cấu hình, các request sẽ xếp hàng dài trong Mailbox, gây tăng latency.
+
+#### Giải pháp 1: ETS (Erlang Term Storage) - Đọc/Ghi Song Song
+ETS là một storage engine in-memory được viết bằng C trực tiếp trong Erlang runtime.
+*   Nó cho phép bất kỳ process nào cũng có thể đọc trực tiếp dữ liệu mà không cần gửi message qua GenServer (tránh serialize/deserialize dữ liệu qua mailbox).
+*   **Mô hình thiết kế chuẩn:** Một GenServer đóng vai trò là "writer" (nhận ghi dữ liệu, ghi xuống ETS). Các Web Controller đóng vai trò là các "reader" (đọc trực tiếp từ ETS table bằng `:ets.lookup/2`). Điều này giúp tăng throughput lên hàng trăm ngàn requests/giây vì các thao tác đọc chạy song song hoàn toàn.
+
+#### Giải pháp 2: PartitionSupervisor
+Nếu bạn bắt buộc phải thực hiện các tác vụ ghi/xử lý logic có state:
+*   `PartitionSupervisor` sẽ khởi chạy một nhóm (pool) gồm $N$ GenServer con.
+*   Khi có request, hệ thống sẽ hash một key (ví dụ: `user_id`) để xác định request đó sẽ gửi tới worker số mấy. Điều này chia tải (load balance) đều ra các process khác nhau, giải quyết triệt để bottleneck.
+
+---
+
+## 3. Bản Chất Truy Vấn Của Ecto & PostgreSQL
+
+### 3.1. Ecto.Multi Hoạt Động Như Thế Nào?
+Nhiều kỹ sư nhầm tưởng `Ecto.Multi` lập tức mở transaction và khóa database khi bạn viết code. Thực tế:
+*   `Ecto.Multi` chỉ là một **công cụ xây dựng cấu trúc dữ liệu thuần túy (Pure Data Structure Builder)**. Khi bạn gọi `Ecto.Multi.new() |> Ecto.Multi.run(...)`, bạn chỉ đang xây dựng một danh sách các câu lệnh/hàm dạng mô tả (declarative). Hoàn toàn không có kết nối nào tới DB được mở ở bước này.
+*   Chỉ khi bạn gọi `Repo.transaction(multi)`, Ecto mới:
+    1. Lấy một DB Connection từ Pool.
+    2. Bắt đầu câu lệnh `BEGIN` mở Transaction thực sự trong Postgres.
+    3. Chạy tuần tự từng bước trong Multi.
+    4. Nếu tất cả thành công, gọi `COMMIT`.
+    5. Nếu có bất kỳ bước nào lỗi (trả về `{:error, reason}`), Ecto lập tức phát lệnh `ROLLBACK` để khôi phục toàn bộ trạng thái DB về ban đầu và trả kết nối lại cho Pool.
+
+### 3.2. N+1 Queries: Cơ Chế Cơ Học
+Giả sử bạn có 100 User, mỗi User có nhiều Order. Bạn muốn in ra tên User kèm danh sách Order.
+
+*   **Cách viết lỗi (N+1):**
+    ```elixir
+    users = Repo.all(User) # 1 truy vấn lấy 100 users
+    Enum.each(users, fn user ->
+      orders = Repo.all(assoc(user, :orders)) # 100 truy vấn lấy orders cho từng user
+      IO.inspect({user.name, orders})
+    end)
+    ```
+    *Cơ chế:* 101 lần gọi mạng tới PostgreSQL. Tổng thời gian trễ (latency) = 101 * Roundtrip time (RTT). Nếu RTT = 5ms, bạn mất ít nhất 500ms chỉ để chờ mạng.
+
+*   **Cách xử lý với Preload (2 Queries):**
+    ```elixir
+    users = Repo.all(User) |> Repo.preload(:orders)
+    ```
+    *Cơ chế cơ học:* Ecto chạy câu truy vấn 1: `SELECT * FROM users;`. Ecto gom toàn bộ các ID của users vừa lấy được (ví dụ: `[1, 2, 3, ..., 100]`). Sau đó nó chạy câu truy vấn 2: `SELECT * FROM orders WHERE user_id IN (1, 2, 3, ..., 100);`. Cuối cùng, Ecto tự thực hiện mapping các bản ghi Order về đúng struct User trong RAM của ứng dụng. Chỉ tốn 2 lần RTT (10ms).
+
+*   **Cách xử lý với Join (1 Query):**
+    ```elixir
+    query = from u in User,
+              join: o in assoc(u, :orders),
+              preload: [orders: o]
+    users = Repo.all(query)
+    ```
+    *Cơ chế cơ học:* Chỉ có 1 câu truy vấn được gửi tới DB sử dụng `INNER JOIN` hoặc `LEFT OUTER JOIN`. Postgres sẽ thực hiện việc liên kết dữ liệu ở tầng đĩa cứng/bộ nhớ của nó và trả về một tập kết quả phẳng (flat result set) duy nhất. Ecto parse tập kết quả này để dựng lại các struct lồng nhau. Phù hợp khi bạn cần lọc User dựa trên điều kiện của Order (ví dụ: tìm User có đơn hàng lớn hơn 1 triệu).
