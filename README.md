@@ -8,7 +8,7 @@ Thư mục này chứa toàn bộ tài liệu lý thuyết, câu hỏi phỏng v
 
 ### **Ngày 1: Core OTP, Database (Ecto/Postgres) & Coding**
 *   **Lý thuyết (Sáng):** Xem chi tiết tại [day1_prep.md](day1_prep.md). Tập trung vào BEAM VM scheduling & memory internals, GenServer đệ quy đuôi mailbox mechanics, và Ecto optimizations.
-*   **Thực hành (Chiều):** Có 4 bài tập thực hành được phân tách thành các thư mục riêng biệt:
+*   **Thực hành (Chiều):** Có 5 bài tập thực hành được phân tách thành các thư mục riêng biệt:
     1.  **Ledger Transaction (Giao dịch sổ cái):** Giao dịch an toàn sử dụng `Ecto.Multi` và Sandbox isolation.
         *   Thư mục: [exercises/01_ledger](exercises/01_ledger)
         *   Mã nguồn: [ledger_practice.exs](exercises/01_ledger/ledger_practice.exs)
@@ -25,6 +25,10 @@ Thư mục này chứa toàn bộ tài liệu lý thuyết, câu hỏi phỏng v
         *   Thư mục: [exercises/04_write_through_cache](exercises/04_write_through_cache)
         *   Mã nguồn: [write_through_cache_practice.exs](exercises/04_write_through_cache/write_through_cache_practice.exs)
         *   Tài liệu giải thích: [write_through_cache_explain.md](exercises/04_write_through_cache/write_through_cache_explain.md)
+    5.  **Data Structures & Algorithms (Cấu trúc dữ liệu & Thuật toán):** Tổng hợp các thuật toán cổ điển giải bằng lập trình hàm Elixir (Đảo ngược từ, Nhóm Anagrams, Đóng mở ngoặc Stack).
+        *   Thư mục: [exercises/07_algorithms](exercises/07_algorithms)
+        *   Mã nguồn: [algorithm_practice.exs](exercises/07_algorithms/algorithm_practice.exs)
+        *   Cẩm nang mẹo thuật toán: [algorithm_tricks.md](exercises/07_algorithms/algorithm_tricks.md)
 *   **Luyện tập (Tối):** Tự trả lời các câu hỏi phản xạ nhanh trong tài liệu Ngày 1.
 
 ### **Ngày 2: Distributed Systems, Message Brokers, DevOps & System Design**
@@ -53,6 +57,7 @@ elixir exercises/01_ledger/ledger_practice.exs
 elixir exercises/02_session_manager/session_manager_practice.exs
 elixir exercises/03_job_queue/job_queue_practice.exs
 elixir exercises/04_write_through_cache/write_through_cache_practice.exs
+elixir exercises/07_algorithms/algorithm_practice.exs
 
 # Ngày 2
 elixir exercises/05_rate_limiter/rate_limiter_practice.exs

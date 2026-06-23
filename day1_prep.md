@@ -195,3 +195,4 @@ Giả sử bạn có 100 User, mỗi User có nhiều Order. Bạn muốn in ra 
 *   **[02_session_manager]**: Quản lý Dynamic Process (DynamicSupervisor + Registry). -> [Bài tập](exercises/02_session_manager/session_manager_practice.exs) | [Giải thích](exercises/02_session_manager/session_manager_explain.md)
 *   **[03_job_queue]**: Hàng đợi công việc đồng thời (Task.Supervisor + Monitor). -> [Bài tập](exercises/03_job_queue/job_queue_practice.exs) | [Giải thích](exercises/03_job_queue/job_queue_explain.md)
 *   **[04_write_through_cache]**: Thiết kế Write-Through Cache với bảng ETS. -> [Bài tập](exercises/04_write_through_cache/write_through_cache_practice.exs) | [Giải thích](exercises/04_write_through_cache/write_through_cache_explain.md)
+*   **[07_algorithms]**: Cấu trúc dữ liệu & Thuật toán giải bằng lập trình hàm Elixir. -> [Bài tập](exercises/07_algorithms/algorithm_practice.exs) | [Cẩm nang](exercises/07_algorithms/algorithm_tricks.md)
