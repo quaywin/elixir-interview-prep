@@ -61,23 +61,16 @@ defmodule SessionWorker do
 end
 
 defmodule SessionManager do
-  # --- TODO: BẮT ĐẦU HOÀN THIỆN CÁC HÀM CỦA MANAGER DƯỚI ĐÂY ---
-
   @doc """
   Khởi chạy một SessionWorker mới dưới DynamicSupervisor (tên là UserSessionSupervisor).
   Nếu session đã tồn tại cho user_id này, trả về `{:error, :already_started}`.
   """
   def start_session(user_id) do
-    # TODO: Khởi động child process bằng DynamicSupervisor
-    # Trả về:
-    # - `{:ok, pid}` nếu thành công.
-    # - `{:error, :already_started}` nếu process đã tồn tại.
-    #
-    # Gợi ý: Dừng DynamicSupervisor.start_child(UserSessionSupervisor, {SessionWorker, user_id})
-    # Khớp (match) các trường hợp {:ok, pid} và {:error, {:already_started, pid}}
-
-    # --- TẠM THỜI TRẢ VỀ LỖI ĐỂ CHẠY TEST FAIL ---
-    {:error, :not_implemented}
+    case DynamicSupervisor.start_child(UserSessionSupervisor, {SessionWorker, user_id}) do
+      {:ok, pid} -> {:ok, pid}
+      {:error, {:already_started, _pid}} -> {:error, :already_started}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @doc """
@@ -85,12 +78,10 @@ defmodule SessionManager do
   Nếu session không tồn tại, trả về `{:error, :not_found}`.
   """
   def get_session_data(user_id) do
-    # TODO: Tìm pid qua Registry.lookup(UserRegistry, user_id)
-    # Nếu thấy [{pid, _value}] -> gọi SessionWorker.get_data(pid) và trả về {:ok, data}
-    # Nếu không tìm thấy -> trả về {:error, :not_found}
-
-    # --- TẠM THỜI TRẢ VỀ LỖI ĐỂ CHẠY TEST FAIL ---
-    {:error, :not_implemented}
+    case Registry.lookup(UserRegistry, user_id) do
+      [{pid, _value}] -> {:ok, SessionWorker.get_data(pid)}
+      [] -> {:error, :not_found}
+    end
   end
 
   @doc """
@@ -98,25 +89,22 @@ defmodule SessionManager do
   Nếu session không tồn tại, trả về `{:error, :not_found}`.
   """
   def update_session_data(user_id, key, value) do
-    # TODO: Tìm pid qua Registry.lookup và cập nhật dữ liệu qua SessionWorker.put_data(pid, key, value)
-    # Trả về:
-    # - `{:ok, :ok}` nếu thành công.
-    # - `{:error, :not_found}` nếu không tìm thấy session.
-
-    # --- TẠM THỜI TRẢ VỀ LỖI ĐỂ CHẠY TEST FAIL ---
-    {:error, :not_implemented}
+    case Registry.lookup(UserRegistry, user_id) do
+      [{pid, _value}] -> {:ok, SessionWorker.put_data(pid, key, value)}
+      [] -> {:error, :not_found}
+    end
   end
 
   @doc """
   Tắt session process khi user logout.
   """
   def stop_session(user_id) do
-    # TODO: Tìm pid qua Registry.lookup và tắt child process của DynamicSupervisor
-    # Gợi ý: DynamicSupervisor.terminate_child(UserSessionSupervisor, pid)
-    # Trả về :ok nếu thành công, {:error, :not_found} nếu không thấy session.
-
-    # --- TẠM THỜI TRẢ VỀ LỖI ĐỂ CHẠY TEST FAIL ---
-    {:error, :not_implemented}
+    case Registry.lookup(UserRegistry, user_id) do
+      [{pid, _value}] -> 
+        DynamicSupervisor.terminate_child(UserSessionSupervisor, pid)
+        :ok
+      [] -> {:error, :not_found}
+    end
   end
 end
 
@@ -142,24 +130,15 @@ defmodule SessionManagerTest do
   end
 
   test "không cho phép tạo trùng session cho cùng 1 user" do
-    # Tránh crash nếu hàm start_session chưa được triển khai đầy đủ
-    case SessionManager.start_session("user_123") do
-      {:ok, _pid} -> 
-        assert {:error, :already_started} = SessionManager.start_session("user_123")
-      _ ->
-        flunk("start_session chưa được cài đặt chính xác")
-    end
+    assert {:ok, _pid} = SessionManager.start_session("user_123")
+    assert {:error, :already_started} = SessionManager.start_session("user_123")
   end
 
   test "cập nhật và lấy dữ liệu session thành công" do
-    case SessionManager.start_session("user_456") do
-      {:ok, _pid} ->
-        assert {:ok, :ok} = SessionManager.update_session_data("user_456", :cart, ["item_1", "item_2"])
-        assert {:ok, data} = SessionManager.get_session_data("user_456")
-        assert data == %{cart: ["item_1", "item_2"]}
-      _ ->
-        flunk("start_session chưa được cài đặt chính xác")
-    end
+    assert {:ok, _pid} = SessionManager.start_session("user_456")
+    assert {:ok, :ok} = SessionManager.update_session_data("user_456", :cart, ["item_1", "item_2"])
+    assert {:ok, data} = SessionManager.get_session_data("user_456")
+    assert data == %{cart: ["item_1", "item_2"]}
   end
 
   test "trả về error khi thao tác trên session không tồn tại" do
@@ -168,50 +147,9 @@ defmodule SessionManagerTest do
   end
 
   test "dừng session thành công (logout) và giải phóng process" do
-    case SessionManager.start_session("user_789") do
-      {:ok, _pid} ->
-        assert :ok = SessionManager.stop_session("user_789")
-        # Session không còn tồn tại nữa
-        assert {:error, :not_found} = SessionManager.get_session_data("user_789")
-      _ ->
-        flunk("start_session chưa được cài đặt chính xác")
-    end
+    assert {:ok, _pid} = SessionManager.start_session("user_789")
+    assert :ok = SessionManager.stop_session("user_789")
+    # Session không còn tồn tại nữa
+    assert {:error, :not_found} = SessionManager.get_session_data("user_789")
   end
 end
-
-# ==============================================================================
-# HƯỚNG DẪN / ĐÁP ÁN GỢI Ý (ĐỪNG XÓA DÒNG NÀY ĐỂ BẠN CÓ THỂ XEM KHI CẦN)
-# ==============================================================================
-#
-# defmodule SessionManager do
-#   def start_session(user_id) do
-#     case DynamicSupervisor.start_child(UserSessionSupervisor, {SessionWorker, user_id}) do
-#       {:ok, pid} -> {:ok, pid}
-#       {:error, {:already_started, pid}} -> {:error, :already_started}
-#       {:error, reason} -> {:error, reason}
-#     end
-#   end
-#
-#   def get_session_data(user_id) do
-#     case Registry.lookup(UserRegistry, user_id) do
-#       [{pid, _}] -> {:ok, SessionWorker.get_data(pid)}
-#       [] -> {:error, :not_found}
-#     end
-#   end
-#
-#   def update_session_data(user_id, key, value) do
-#     case Registry.lookup(UserRegistry, user_id) do
-#       [{pid, _}] -> {:ok, SessionWorker.put_data(pid, key, value)}
-#       [] -> {:error, :not_found}
-#     end
-#   end
-#
-#   def stop_session(user_id) do
-#     case Registry.lookup(UserRegistry, user_id) do
-#       [{pid, _}] -> 
-#         DynamicSupervisor.terminate_child(UserSessionSupervisor, pid)
-#         :ok
-#       [] -> {:error, :not_found}
-#     end
-#   end
-# end

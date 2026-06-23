@@ -64,41 +64,37 @@ defmodule BatchProcessor do
 
   @impl true
   def handle_call({:add_item, item}, _from, state) do
-    # TODO: Thêm item mới vào queue (state.queue)
-    # 1. Thêm item vào list (chú ý: append hoặc prepend tùy thuộc vào thứ tự bạn mong muốn)
-    # 2. Nếu kích thước queue đạt tới `state.batch_size`:
-    #    - Hủy timer hiện tại (nếu có) bằng `cancel_timer(state.timer)`
-    #    - Thực thi callback với danh sách items: `state.callback.(items)`
-    #    - Reset queue và timer trong state về rỗng/nil.
-    # 3. Nếu kích thước queue chưa đạt batch_size và chưa có timer hoạt động:
-    #    - Thiết lập một timer mới bằng `:erlang.send_after(state.timeout, self(), :timeout_flush)`
-    #    - Lưu ref của timer này vào state.
-    # 4. Trả về `{:reply, :ok, new_state}`
+    new_queue = state.queue ++ [item]
 
-    # --- TẠM THỜI TRẢ VỀ LỖI ĐỂ CHẠY TEST FAIL ---
-    {:reply, {:error, :not_implemented}, state}
+    if length(new_queue) >= state.batch_size do
+      cancel_timer(state.timer)
+      state.callback.(new_queue)
+      {:reply, :ok, %{state | queue: [], timer: nil}}
+    else
+      timer = if is_nil(state.timer) do
+        :erlang.send_after(state.timeout, self(), :timeout_flush)
+      else
+        state.timer
+      end
+      {:reply, :ok, %{state | queue: new_queue, timer: timer}}
+    end
   end
 
   @impl true
   def handle_call(:flush, _from, state) do
-    # TODO: Chủ động xử lý toàn bộ items hiện tại trong queue
-    # 1. Hủy timer (nếu có)
-    # 2. Thực thi callback nếu queue không trống.
-    # 3. Trả về `{:reply, :ok, new_state}` (với queue rỗng và timer nil)
-
-    # --- TẠM THỜI TRẢ VỀ LỖI ĐỂ CHẠY TEST FAIL ---
-    {:reply, {:error, :not_implemented}, state}
+    cancel_timer(state.timer)
+    if length(state.queue) > 0 do
+      state.callback.(state.queue)
+    end
+    {:reply, :ok, %{state | queue: [], timer: nil}}
   end
 
   @impl true
   def handle_info(:timeout_flush, state) do
-    # TODO: Xử lý khi hết thời gian chờ (timeout)
-    # 1. Thực thi callback nếu queue không trống.
-    # 2. Reset queue và timer về rỗng/nil.
-    # 3. Trả về `{:noreply, new_state}`
-
-    # --- TẠM THỜI TRẢ VỀ LỖI ĐỂ CHẠY TEST FAIL ---
-    {:noreply, state}
+    if length(state.queue) > 0 do
+      state.callback.(state.queue)
+    end
+    {:noreply, %{state | queue: [], timer: nil}}
   end
 
   # Helper để hủy timer an toàn
@@ -125,80 +121,28 @@ defmodule BatchProcessorTest do
   end
 
   test "gom đủ batch_size thì tự động xử lý và reset queue", %{agent: agent} do
-    # Hãy thay đổi assert này khi bạn đã code xong handle_call add_item
-    case BatchProcessor.add_item("item_1") do
-      :ok ->
-        assert :ok = BatchProcessor.add_item("item_2")
-        # Chưa đủ 3 items, callback chưa được gọi
-        assert Agent.get(agent, & &1) == []
+    assert :ok = BatchProcessor.add_item("item_1")
+    assert :ok = BatchProcessor.add_item("item_2")
+    # Chưa đủ 3 items, callback chưa được gọi
+    assert Agent.get(agent, & &1) == []
 
-        assert :ok = BatchProcessor.add_item("item_3")
-        # Đủ 3 items, callback phải được gọi
-        assert Agent.get(agent, & &1) == [["item_1", "item_2", "item_3"]]
-      _ ->
-        flunk("add_item chưa được cài đặt chính xác")
-    end
+    assert :ok = BatchProcessor.add_item("item_3")
+    # Đủ 3 items, callback phải được gọi
+    assert Agent.get(agent, & &1) == [["item_1", "item_2", "item_3"]]
   end
 
   test "tự động flush sau khi hết thời gian timeout dù chưa đủ batch_size", %{agent: agent} do
-    case BatchProcessor.add_item("item_1") do
-      :ok ->
-        assert :ok = BatchProcessor.add_item("item_2")
-        # Đợi 150ms (> timeout 100ms)
-        Process.sleep(150)
-        # Hệ thống phải tự động flush
-        assert Agent.get(agent, & &1) == [["item_1", "item_2"]]
-      _ ->
-        flunk("add_item chưa được cài đặt chính xác")
-    end
+    assert :ok = BatchProcessor.add_item("item_1")
+    assert :ok = BatchProcessor.add_item("item_2")
+    # Đợi 150ms (> timeout 100ms)
+    Process.sleep(150)
+    # Hệ thống phải tự động flush
+    assert Agent.get(agent, & &1) == [["item_1", "item_2"]]
   end
 
   test "chủ động flush bằng client API", %{agent: agent} do
-    case BatchProcessor.add_item("item_1") do
-      :ok ->
-        assert :ok = BatchProcessor.flush()
-        assert Agent.get(agent, & &1) == [["item_1"]]
-      _ ->
-        flunk("flush hoặc add_item chưa được cài đặt chính xác")
-    end
+    assert :ok = BatchProcessor.add_item("item_1")
+    assert :ok = BatchProcessor.flush()
+    assert Agent.get(agent, & &1) == [["item_1"]]
   end
 end
-
-# ==============================================================================
-# HƯỚNG DẪN / ĐÁP ÁN GỢI Ý (ĐỪNG XÓA DÒNG NÀY ĐỂ BẠN CÓ THỂ XEM KHI CẦN)
-# ==============================================================================
-#
-# @impl true
-# def handle_call({:add_item, item}, _from, state) do
-#   new_queue = state.queue ++ [item]
-#
-#   if length(new_queue) >= state.batch_size do
-#     cancel_timer(state.timer)
-#     state.callback.(new_queue)
-#     {:reply, :ok, %{state | queue: [], timer: nil}}
-#   else
-#     timer = if is_nil(state.timer) do
-#       :erlang.send_after(state.timeout, self(), :timeout_flush)
-#     else
-#       state.timer
-#     end
-#     {:reply, :ok, %{state | queue: new_queue, timer: timer}}
-#   end
-# end
-#
-# @impl true
-# def handle_call(:flush, _from, state) do
-#   cancel_timer(state.timer)
-#   if length(state.queue) > 0 do
-#     state.callback.(state.queue)
-#   end
-#   {:reply, :ok, %{state | queue: [], timer: nil}}
-# end
-#
-# @impl true
-# def handle_info(:timeout_flush, state) do
-#   if length(state.queue) > 0 do
-#     state.callback.(state.queue)
-#   end
-#   {:noreply, %{state | queue: [], timer: nil}}
-# end

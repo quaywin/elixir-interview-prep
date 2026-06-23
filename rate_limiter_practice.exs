@@ -23,7 +23,6 @@ defmodule RateLimiter do
   # --- CLIENT API ---
 
   def start_link(opts \\ []) do
-    # opts có thể chứa: max_requests, interval
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
@@ -34,7 +33,6 @@ defmodule RateLimiter do
   - `{:error, :rate_limited}` nếu vượt quá giới hạn.
   """
   def request(ip) do
-    # TODO: Gọi GenServer.call tới __MODULE__
     GenServer.call(__MODULE__, {:request, ip})
   end
 
@@ -45,10 +43,6 @@ defmodule RateLimiter do
     max_requests = Keyword.get(opts, :max_requests, 5)
     interval = Keyword.get(opts, :interval, 5000)
 
-    # State lưu trữ:
-    # - max_requests: số lượng giới hạn
-    # - interval: thời gian reset
-    # - ips: Map lưu {ip => request_count}
     state = %{
       max_requests: max_requests,
       interval: interval,
@@ -60,26 +54,25 @@ defmodule RateLimiter do
 
   @impl true
   def handle_call({:request, ip}, _from, state) do
-    # TODO: Xử lý request ở đây
-    # 1. Lấy số lượng request hiện tại của ip từ state.ips (mặc định là 0 nếu chưa có)
-    # 2. Nếu count >= state.max_requests, trả về `{:reply, {:error, :rate_limited}, state}`
-    # 3. Ngược lại:
-    #    - Tăng count lên 1.
-    #    - Cập nhật map state.ips.
-    #    - Nếu là request đầu tiên (count cũ là 0), hãy thiết lập một timer bằng `:erlang.send_after/3`
-    #      để gửi một message reset cho riêng IP này (ví dụ: `{:reset_ip, ip}`) sau `state.interval` mili-giây.
-    #    - Trả về `{:reply, {:ok, new_count}, new_state}`
-    
-    # --- TODO: BẮT ĐẦU VIẾT CODE CỦA BẠN DƯỚI ĐÂY ---
-    # Thay thế phần này bằng logic thực tế của bạn
-    # (Hiện tại trả về rate_limited giả để test suite ban đầu chạy fail)
-    {:reply, {:error, :rate_limited}, state}
+    current_count = Map.get(state.ips, ip, 0)
+
+    if current_count >= state.max_requests do
+      {:reply, {:error, :rate_limited}, state}
+    else
+      new_count = current_count + 1
+      new_ips = Map.put(state.ips, ip, new_count)
+
+      # Nếu là request đầu tiên của IP này, thiết lập timer để reset IP
+      if current_count == 0 do
+        :erlang.send_after(state.interval, self(), {:reset_ip, ip})
+      end
+
+      {:reply, {:ok, new_count}, %{state | ips: new_ips}}
+    end
   end
 
   @impl true
   def handle_info({:reset_ip, ip}, state) do
-    # TODO: Xử lý xóa IP ra khỏi state.ips khi hết thời gian interval
-    # Trả về `{:noreply, new_state}`
     new_ips = Map.delete(state.ips, ip)
     {:noreply, %{state | ips: new_ips}}
   end
@@ -90,7 +83,6 @@ ExUnit.start()
 
 defmodule RateLimiterTest do
   use ExUnit.Case
-  # Chạy tuần tự vì GenServer đăng ký tên duy nhất trong test suite
   @moduletag :capture_log
 
   setup do
@@ -132,25 +124,3 @@ defmodule RateLimiterTest do
     assert {:ok, 1} = RateLimiter.request("192.168.1.4")
   end
 end
-
-# ==============================================================================
-# HƯỚNG DẪN / ĐÁP ÁN GỢI Ý (ĐỪNG XÓA DÒNG NÀY ĐỂ BẠN CÓ THỂ XEM KHI CẦN)
-# ==============================================================================
-# @impl true
-# def handle_call({:request, ip}, _from, state) do
-#   current_count = Map.get(state.ips, ip, 0)
-#
-#   if current_count >= state.max_requests do
-#     {:reply, {:error, :rate_limited}, state}
-#   else
-#     new_count = current_count + 1
-#     new_ips = Map.put(state.ips, ip, new_count)
-#
-#     # Nếu là request đầu tiên của IP, bắt đầu đếm ngược reset
-#     if current_count == 0 do
-#       :erlang.send_after(state.interval, self(), {:reset_ip, ip})
-#     end
-#
-#     {:reply, {:ok, new_count}, %{state | ips: new_ips}}
-#   end
-# end

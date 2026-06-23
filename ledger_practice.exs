@@ -91,7 +91,7 @@ defmodule MockRepo do
   end
 end
 
-# --- PHẦN BÀI LÀM CỦA BẠN ---
+# --- PHẦN BÀI LÀM ĐÃ THỰC HIỆN ---
 defmodule LedgerService do
   @doc """
   Thực hiện chuyển tiền từ tài khoản `from_id` sang `to_id` với số tiền `amount`.
@@ -103,29 +103,35 @@ defmodule LedgerService do
   Yêu cầu trả về:
   - `{:ok, %{debit: sender_acc, credit: receiver_acc, log: log_record}}` nếu thành công.
   - `{:error, step_name, reason, accumulated_changes}` nếu thất bại ở bước nào đó.
-  
-  *Chú ý:* Sử dụng `repo` được truyền vào trong callback của Ecto.Multi.run để thao tác:
-    - `repo.get.(id)` -> lấy tài khoản (trả về map tài khoản hoặc nil)
-    - `repo.update_account.(id, new_balance)` -> cập nhật số dư, trả về state mới
-    - `repo.insert_log.(from_id, to_id, amount)` -> lưu log, trả về {log, state mới}
   """
   def transfer_money(from_id, to_id, amount) do
-    # HƯỚNG DẪN: Viết Ecto.Multi pipeline và chạy MockRepo.transaction() ở cuối
-    # Các hàm callback của Multi.run nhận 2 tham số: `fn repo, changes -> ... end`
-    # Trong đó repo chứa các helper functions, changes chứa kết quả các bước trước đó.
-    # Mỗi callback thành công phải trả về: `{:ok, value_tra_ve, updated_state}`
-    # Thất bại trả về: `{:error, "lý do"}`
-    
-    # --- TODO: BẮT ĐẦU VIẾT CODE CỦA BẠN DƯỚI ĐÂY ---
     Ecto.Multi.new()
-    # Hãy điền các bước :debit, :credit, :log và gọi MockRepo.transaction()
-    # (Ví dụ: |> Ecto.Multi.run(:debit, fn repo, _changes -> ... end))
-    # Xem ví dụ đáp án gợi ý ở cuối file nếu gặp khó khăn.
-    
-    # --- BẮT ĐẦU CODE MẪU BỊ KHUYẾT ---
-    # Thay thế phần này bằng code của bạn
-    # (Hiện tại trả về lỗi để test suite chạy báo fail trước khi bạn code)
-    |> Ecto.Multi.run(:debit, fn _repo, _changes -> {:error, "Chưa được cài đặt"} end)
+    |> Ecto.Multi.run(:debit, fn repo, _changes ->
+      case repo.get.(from_id) do
+        nil -> {:error, "Sender account not found"}
+        sender ->
+          if sender.balance >= amount do
+            new_balance = sender.balance - amount
+            updated_state = repo.update_account.(from_id, new_balance)
+            {:ok, %{sender | balance: new_balance}, updated_state}
+          else
+            {:error, "Insufficient balance"}
+          end
+      end
+    end)
+    |> Ecto.Multi.run(:credit, fn repo, _changes ->
+      case repo.get.(to_id) do
+        nil -> {:error, "Receiver account not found"}
+        receiver ->
+          new_balance = receiver.balance + amount
+          updated_state = repo.update_account.(to_id, new_balance)
+          {:ok, %{receiver | balance: new_balance}, updated_state}
+      end
+    end)
+    |> Ecto.Multi.run(:log, fn repo, _changes ->
+      {log, updated_state} = repo.insert_log.(from_id, to_id, amount)
+      {:ok, log, updated_state}
+    end)
     |> MockRepo.transaction()
   end
 end
@@ -183,37 +189,3 @@ defmodule LedgerServiceTest do
     assert Map.get(state.accounts, 1).balance == 1000
   end
 end
-
-# ==============================================================================
-# HƯỚNG DẪN / ĐÁP ÁN GỢI Ý (ĐỪNG XÓA DÒNG NÀY ĐỂ BẠN CÓ THỂ XEM KHI CẦN)
-# ==============================================================================
-# def transfer_money(from_id, to_id, amount) do
-#   Ecto.Multi.new()
-#   |> Ecto.Multi.run(:debit, fn repo, _changes ->
-#     case repo.get.(from_id) do
-#       nil -> {:error, "Sender account not found"}
-#       sender ->
-#         if sender.balance >= amount do
-#           new_balance = sender.balance - amount
-#           updated_state = repo.update_account.(from_id, new_balance)
-#           {:ok, %{sender | balance: new_balance}, updated_state}
-#         else
-#           {:error, "Insufficient balance"}
-#         end
-#     end
-#   end)
-#   |> Ecto.Multi.run(:credit, fn repo, _changes ->
-#     case repo.get.(to_id) do
-#       nil -> {:error, "Receiver account not found"}
-#       receiver ->
-#         new_balance = receiver.balance + amount
-#         updated_state = repo.update_account.(to_id, new_balance)
-#         {:ok, %{receiver | balance: new_balance}, updated_state}
-#     end
-#   end)
-#   |> Ecto.Multi.run(:log, fn repo, _changes ->
-#     {log, updated_state} = repo.insert_log.(from_id, to_id, amount)
-#     {:ok, log, updated_state}
-#   end)
-#   |> MockRepo.transaction()
-# end
