@@ -7,15 +7,19 @@ Thư mục này chứa toàn bộ tài liệu lý thuyết, câu hỏi phỏng v
 ## 📅 Lịch Trình Chi Tiết
 
 ### **Ngày 1: Core OTP, Database (Ecto/Postgres) & Coding**
-*   **Lý thuyết (Sáng):** Xem chi tiết tại [day1_prep.md](day1_prep.md). Tập trung vào BEAM Internals, GenServer callbacks, Supervision Trees và Ecto optimizations.
-*   **Thực hành (Chiều):** Có 2 bài tập thực hành từ cơ bản đến nâng cao:
-    1.  **Ledger Transaction:** Giao dịch ngân hàng an toàn sử dụng `Ecto.Multi` và Sandbox isolation.
+*   **Lý thuyết (Sáng):** Xem chi tiết tại [day1_prep.md](day1_prep.md). Tập trung vào BEAM VM scheduling & memory internals, GenServer đệ quy đuôi mailbox mechanics, và Ecto optimizations.
+*   **Thực hành (Chiều):** Có 4 bài tập thực hành từ cơ bản đến nâng cao:
+    1.  **Ledger Transaction (Giao dịch sổ cái):** Giao dịch an toàn sử dụng `Ecto.Multi` và Sandbox isolation.
         *   File: [ledger_practice.exs](ledger_practice.exs)
-    2.  **Session Manager:** Quản lý process động sử dụng `DynamicSupervisor` và `Registry` định danh.
+    2.  **Session Manager (Quản lý phiên):** Quản lý process động sử dụng `DynamicSupervisor` và `Registry` định danh.
         *   File: [session_manager_practice.exs](session_manager_practice.exs)
+    3.  **Job Queue (Hàng đợi công việc - Nâng cao):** Điều phối các Task chạy bất đồng bộ với giới hạn song song (`max_concurrency`) thông qua `Task.Supervisor` và giám sát (`monitor`).
+        *   File: [job_queue_practice.exs](job_queue_practice.exs)
+    4.  **Write-Through Cache (Ghi trực tiếp - Nâng cao):** Thiết kế cache với tốc độ đọc cực nhanh song song bằng cách đọc trực tiếp từ bảng ETS, đồng thời đảm bảo an toàn ghi đồng bộ qua GenServer và DB.
+        *   File: [write_through_cache_practice.exs](write_through_cache_practice.exs)
 *   **Luyện tập (Tối):** Tự trả lời các câu hỏi phản xạ nhanh trong tài liệu Ngày 1.
 
-### **Ngày 2: Distributed Systems, System Design, DevOps & Behavioral**
+### **Ngày 2: Distributed Systems, Message Brokers, DevOps & System Design**
 *   **Lý thuyết & Kiến trúc (Sáng):** Xem chi tiết tại [day2_prep.md](day2_prep.md). Tập trung vào Clustering, Message Brokers (Kafka vs RabbitMQ), Observability (:telemetry, Prometheus) và DevOps.
 *   **Thực hành (Chiều):** Có 2 bài tập thực hành về Concurrency & Rate limiting:
     1.  **Rate Limiter:** GenServer quản lý tần suất request trên mỗi IP có reset timer.
@@ -34,6 +38,8 @@ Các bài tập thực hành được thiết kế dưới dạng file script El
     ```bash
     elixir ledger_practice.exs
     elixir session_manager_practice.exs
+    elixir job_queue_practice.exs
+    elixir write_through_cache_practice.exs
     ```
 2.  **Chạy bài tập Ngày 2:**
     ```bash
