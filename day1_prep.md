@@ -187,3 +187,11 @@ Giả sử bạn có 100 User, mỗi User có nhiều Order. Bạn muốn in ra 
     users = Repo.all(query)
     ```
     *Cơ chế cơ học:* Chỉ có 1 câu truy vấn được gửi tới DB sử dụng `INNER JOIN` hoặc `LEFT OUTER JOIN`. Postgres sẽ thực hiện việc liên kết dữ liệu ở tầng đĩa cứng/bộ nhớ của nó và trả về một tập kết quả phẳng (flat result set) duy nhất. Ecto parse tập kết quả này để dựng lại các struct lồng nhau. Phù hợp khi bạn cần lọc User dựa trên điều kiện của Order (ví dụ: tìm User có đơn hàng lớn hơn 1 triệu).
+
+---
+
+## 🚀 Các bài tập thực hành Ngày 1 (exercises/)
+*   **[01_ledger]**: Giao dịch Ecto.Multi an toàn. -> [Bài tập](exercises/01_ledger/ledger_practice.exs) | [Giải thích](exercises/01_ledger/ledger_explain.md)
+*   **[02_session_manager]**: Quản lý Dynamic Process (DynamicSupervisor + Registry). -> [Bài tập](exercises/02_session_manager/session_manager_practice.exs) | [Giải thích](exercises/02_session_manager/session_manager_explain.md)
+*   **[03_job_queue]**: Hàng đợi công việc đồng thời (Task.Supervisor + Monitor). -> [Bài tập](exercises/03_job_queue/job_queue_practice.exs) | [Giải thích](exercises/03_job_queue/job_queue_explain.md)
+*   **[04_write_through_cache]**: Thiết kế Write-Through Cache với bảng ETS. -> [Bài tập](exercises/04_write_through_cache/write_through_cache_practice.exs) | [Giải thích](exercises/04_write_through_cache/write_through_cache_explain.md)
