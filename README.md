@@ -82,3 +82,9 @@ elixir exercises/06_batch_processor/batcher_practice.exs
 *   **Think Out Loud:** Khi live coding, hãy liên tục giải thích tư duy của bạn (ví dụ: tại sao dùng pattern matching thay vì if/else, tại sao dùng `Ecto.Multi` thay vì transaction block thông thường).
 *   **Trade-off Mindset:** Khi thiết kế hệ thống, luôn nêu rõ ưu và nhược điểm của từng công nghệ (ví dụ: Redis vs ETS, Kafka vs RabbitMQ). Không có giải pháp hoàn hảo, chỉ có giải pháp phù hợp nhất với bối cảnh.
 *   **STAR structure:** Khi trả lời các câu hỏi tình huống (behavioral), hãy đi thẳng vào bối cảnh (Situation), nhiệm vụ (Task), hành động cụ thể của bạn (Action) và kết quả đo lường được (Result).
+
+---
+
+## 📝 Tài liệu tra cứu cú pháp nhanh (Cheat Sheet)
+Nếu bạn nhớ hướng giải quyết (logic) nhưng hay quên các cú pháp Erlang/Elixir đặc thù (via tuples, `:ets`, `:erlang.send_after`), hãy mở nhanh tài liệu sau để tra cứu bộ khung xương mẫu:
+*   **[Cẩm nang Tra Cứu Cú Pháp Nhanh](exercises/syntax_cheat_sheet.md)**
