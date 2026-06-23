@@ -8,24 +8,30 @@ Thư mục này chứa toàn bộ tài liệu lý thuyết, câu hỏi phỏng v
 
 ### **Ngày 1: Core OTP, Database (Ecto/Postgres) & Coding**
 *   **Lý thuyết (Sáng):** Xem chi tiết tại [day1_prep.md](day1_prep.md). Tập trung vào BEAM VM scheduling & memory internals, GenServer đệ quy đuôi mailbox mechanics, và Ecto optimizations.
-*   **Thực hành (Chiều):** Có 4 bài tập thực hành từ cơ bản đến nâng cao:
+*   **Thực hành (Chiều):** Có 4 bài tập thực hành từ cơ bản đến nâng cao (Mỗi bài tập đi kèm 1 file giải thích bản chất chi tiết):
     1.  **Ledger Transaction (Giao dịch sổ cái):** Giao dịch an toàn sử dụng `Ecto.Multi` và Sandbox isolation.
-        *   File: [ledger_practice.exs](ledger_practice.exs)
+        *   Mã nguồn: [ledger_practice.exs](ledger_practice.exs)
+        *   Tài liệu giải thích bản chất: [ledger_explain.md](ledger_explain.md)
     2.  **Session Manager (Quản lý phiên):** Quản lý process động sử dụng `DynamicSupervisor` và `Registry` định danh.
-        *   File: [session_manager_practice.exs](session_manager_practice.exs)
+        *   Mã nguồn: [session_manager_practice.exs](session_manager_practice.exs)
+        *   Tài liệu giải thích bản chất: [session_manager_explain.md](session_manager_explain.md)
     3.  **Job Queue (Hàng đợi công việc - Nâng cao):** Điều phối các Task chạy bất đồng bộ với giới hạn song song (`max_concurrency`) thông qua `Task.Supervisor` và giám sát (`monitor`).
-        *   File: [job_queue_practice.exs](job_queue_practice.exs)
+        *   Mã nguồn: [job_queue_practice.exs](job_queue_practice.exs)
+        *   Tài liệu giải thích bản chất: [job_queue_explain.md](job_queue_explain.md)
     4.  **Write-Through Cache (Ghi trực tiếp - Nâng cao):** Thiết kế cache với tốc độ đọc cực nhanh song song bằng cách đọc trực tiếp từ bảng ETS, đồng thời đảm bảo an toàn ghi đồng bộ qua GenServer và DB.
-        *   File: [write_through_cache_practice.exs](write_through_cache_practice.exs)
+        *   Mã nguồn: [write_through_cache_practice.exs](write_through_cache_practice.exs)
+        *   Tài liệu giải thích bản chất: [write_through_cache_explain.md](write_through_cache_explain.md)
 *   **Luyện tập (Tối):** Tự trả lời các câu hỏi phản xạ nhanh trong tài liệu Ngày 1.
 
 ### **Ngày 2: Distributed Systems, Message Brokers, DevOps & System Design**
 *   **Lý thuyết & Kiến trúc (Sáng):** Xem chi tiết tại [day2_prep.md](day2_prep.md). Tập trung vào Clustering, Message Brokers (Kafka vs RabbitMQ), Observability (:telemetry, Prometheus) và DevOps.
-*   **Thực hành (Chiều):** Có 2 bài tập thực hành về Concurrency & Rate limiting:
+*   **Thực hành (Chiều):** Có 2 bài tập thực hành về Concurrency & Rate limiting (kèm giải thích chi tiết):
     1.  **Rate Limiter:** GenServer quản lý tần suất request trên mỗi IP có reset timer.
-        *   File: [rate_limiter_practice.exs](rate_limiter_practice.exs)
+        *   Mã nguồn: [rate_limiter_practice.exs](rate_limiter_practice.exs)
+        *   Tài liệu giải thích bản chất: [rate_limiter_explain.md](rate_limiter_explain.md)
     2.  **Batch Processor:** gom nhóm dữ liệu theo lô (batching) tự động flush dựa trên kích thước hoặc timeout.
-        *   File: [batcher_practice.exs](batcher_practice.exs)
+        *   Mã nguồn: [batcher_practice.exs](batcher_practice.exs)
+        *   Tài liệu giải thích bản chất: [batcher_explain.md](batcher_explain.md)
 *   **System Design & Mock (Tối):** Thiết kế Notification Gateway (100k CCU) và chuẩn bị các câu chuyện STAR.
 
 ---
