@@ -1,63 +1,71 @@
-# 📔 Ngày 1: Core OTP, BEAM Internals & Ecto Optimizations
+# 📔 Ngày 1: Deep Dive BEAM VM, OTP Internals & Database Optimizations
 
-## 1. BEAM VM & OTP Internals
+## 1. BEAM VM Internals (Kiến thức nâng cao dành cho Senior)
 
-### Process Scheduling (Preemptive)
-*   **Cách hoạt động:** BEAM VM chạy một Scheduler trên mỗi CPU core. Mỗi scheduler quản lý một run queue chứa các Erlang processes.
-*   **Cơ chế:** Khác với cooperative scheduling, BEAM dùng **Preemptive Scheduling** dựa trên **reduction count** (mỗi hàm gọi hoặc thao tác tính toán tương đương với 1 reduction). Một process được chạy tối đa **2000 reductions** thì scheduler sẽ tạm dừng nó (preempt) và chuyển sang process tiếp theo. Điều này giúp đảm bảo tính Real-time/Soft Real-time: không một process đơn lẻ nào có thể chiếm quyền CPU quá lâu làm nghẽn hệ thống (ngăn ngừa latency spike).
+### Process Scheduling & Reductions
+*   **Schedulers:** Khi BEAM khởi động, nó tự động nhận diện số lượng CPU core logic của máy chủ và khởi chạy số lượng Scheduler tương ứng (1 scheduler/core). Mỗi Scheduler chạy trên một OS thread riêng biệt.
+*   **Run Queues:** Mỗi scheduler sở hữu một run queue riêng chứa các process sẵn sàng chạy. Để tránh hiện tượng lệch tải (một core bận rộn còn core khác rảnh rỗi), BEAM sử dụng cơ chế **Work Stealing**: một scheduler rảnh rỗi sẽ chủ động lấy bớt process từ run queue của scheduler đang bị quá tải.
+*   **Reduction Budget (Preemptive Scheduling):** 
+    *   Mỗi thao tác tính toán hoặc hàm gọi trong BEAM được gán một chi phí gọi là **reduction**. Mỗi process khi được lập lịch chạy sẽ được cấp một quota là **2000 reductions**.
+    *   Khi process tiêu thụ hết 2000 reductions này, scheduler sẽ lưu trạng thái (context switch) của process đó lại, đẩy nó xuống cuối run queue và nhường quyền cho process khác.
+    *   *Ý nghĩa:* Cơ chế preemptive scheduling đảm bảo tính **Soft Real-time** và độ trễ cực thấp (low latency) cho ứng dụng. Không một process tính toán nặng nào (ví dụ: vòng lặp vô hạn) có thể làm treo toàn bộ hệ thống hoặc ảnh hưởng tới việc nhận/gửi request của các process khác.
 
-### Garbage Collection (Per-process Heap)
-*   **Cách hoạt động:** Mỗi process trong BEAM có vùng nhớ Heap riêng độc lập. GC chạy độc lập trên từng process heap này.
-*   **Ưu điểm:** 
-    *   Không có hiện tượng "stop-the-world" (toàn bộ ứng dụng dừng lại để GC dọn rác) như Java hay Go. GC chỉ lock và dọn dẹp vùng nhớ của một process cụ thể khi process đó cần thêm bộ nhớ hoặc kết thúc nhiệm vụ.
-    *   Khi một process chết đi, toàn bộ heap của nó được giải phóng ngay lập tức mà không cần chạy GC algorithm phức tạp.
+### Garbage Collection (Generational & Per-process Heap)
+*   **Vùng nhớ Heap riêng biệt:** Mỗi process BEAM có Heap và Stack riêng, bắt đầu với kích thước cực kỳ nhỏ (~309 words, khoảng 2.5 KB). Stack lớn dần từ trên xuống, Heap lớn dần từ dưới lên trong cùng một vùng nhớ được cấp phát.
+*   **Generational GC:** BEAM áp dụng cơ chế GC theo thế hệ (Generational GC) gồm 2 phân vùng:
+    *   **Young Generation (New Heap):** Nơi chứa các dữ liệu mới được tạo ra. GC chạy ở đây rất thường xuyên (Minor GC) bằng thuật toán Copying Collector (chép các dữ liệu còn sống sang vùng nhớ mới và dọn sạch vùng cũ).
+    *   **Old Generation (Old Heap):** Khi các dữ liệu sống sót qua một số chu kỳ Minor GC nhất định, chúng được chuyển sang Old Heap. GC ở đây chạy ít thường xuyên hơn (Major GC) vì chi phí dọn dẹp lớn hơn.
+*   **Binary Heap (Off-heap storage):** 
+    *   Các dữ liệu kiểu binary có kích thước **lớn hơn 64 bytes** (gọi là *Refc Binaries*) không được lưu trữ trực tiếp trên process heap của từng process.
+    *   Thay vào đó, chúng được lưu trữ ở một vùng nhớ dùng chung toàn cục (Global Shared Heap). Trực tiếp trên process heap chỉ lưu một con trỏ tham chiếu (size 24 bytes) trỏ tới vùng nhớ dùng chung này kèm theo một bộ đếm tham chiếu (Reference Counter).
+    *   *Lưu ý rò rỉ bộ nhớ (Memory Leak):* Nếu một process giữ một tham chiếu nhỏ tới một Binary lớn (ví dụ: parse một file JSON 10MB rồi giữ lại một key nhỏ 10 bytes), cả khối 10MB kia sẽ không thể giải phóng khỏi Global Heap cho đến khi process đó chết hoặc chạy GC thu hồi con trỏ tham chiếu đó.
 
-### Fault Tolerance & Supervision Trees
-*   **Triết lý:** "Let it crash". Thay vì viết quá nhiều code try-catch phòng ngừa mọi lỗi có thể xảy ra, hãy để process crash và để Supervisor khôi phục nó về trạng thái an toàn đã biết.
-*   **Supervision Strategies:**
-    *   `one_for_one`: Phù hợp nhất cho các dynamic workers không phụ thuộc trạng thái lẫn nhau. Khi worker crash, chỉ duy nhất nó được restart.
-    *   `one_for_all`: Dùng khi các process phụ thuộc chặt chẽ vào nhau (ví dụ: một process đọc kết nối mạng và một process xử lý dữ liệu từ kết nối đó). Nếu một đứa crash, restart toàn bộ.
-    *   `rest_for_one`: Nếu process A crash, các process khởi tạo sau nó trong supervisor child list (B, C, D) sẽ bị tắt và khởi động lại. Các process khởi tạo trước A không bị ảnh hưởng.
-    *   `DynamicSupervisor`: Cho phép giám sát các child process được tạo ra động tại runtime (ví dụ: tạo 1 process xử lý giao dịch cho mỗi user đăng nhập).
-
----
-
-## 2. GenServer Lifecycle & State
-
-### Các callback cốt lõi và vai trò
-1.  `init(init_arg)`: Khởi tạo state. Chú ý: callback này là **blocking**. Nếu bạn gọi API bên ngoài hoặc truy vấn DB nặng ở đây, nó sẽ làm nghẽn quá trình khởi động ứng dụng (hoặc làm Supervisor bị timeout). 
-    *   *Giải pháp:* Trả về `{:ok, state, {:continue, :post_init}}` và xử lý logic nặng trong callback `handle_continue/2`.
-2.  `handle_call(msg, from, state)`: Xử lý các request đồng bộ (synchronous). Bắt buộc trả về phản hồi (`{:reply, reply, new_state}`). Làm block caller cho đến khi nhận được kết quả.
-3.  `handle_cast(msg, state)`: Xử lý request bất đồng bộ (asynchronous). Trả về `{:noreply, new_state}`. Không block caller.
-4.  `handle_info(msg, state)`: Xử lý tất cả các message "ngoài luồng" gửi trực tiếp đến PID của GenServer bằng toán tử `send/2` thay vì qua hàm của module GenServer (ví dụ: `:erlang.send_after/3` phát timer, message từ cổng mạng hoặc sự kiện `:DOWN` từ process khác đang được monitor).
-
-### ❓ Câu hỏi phỏng vấn thực tế:
-*   **Q:** Làm thế nào để lưu trữ trạng thái giữa các lần khởi động lại GenServer?
-    *   **A:** Bản thân GenServer lưu state trong bộ nhớ in-memory của process, nếu crash thì state mất sạch. Để khôi phục state, ta phải ghi state xuống một database (PostgreSQL/Redis) hoặc sử dụng ETS table có owner process khác (không bị crash cùng GenServer). Khi khởi động lại (`init`), GenServer sẽ đọc lại dữ liệu từ các nguồn này.
-*   **Q:** Phân biệt `Task.async/1` và `Task.start/1`?
-    *   **A:** 
-        *   `Task.async/1` trả về một `%Task{}` struct và tự động link với process hiện tại. Nó được thiết kế để bạn đợi kết quả trả về bằng cách dùng `Task.await/2`. Nếu task crash, caller process cũng crash theo.
-        *   `Task.start/1` khởi chạy một process bất đồng bộ dạng fire-and-forget, không link với caller process. Bạn không cần (và không thể) đợi kết quả của nó.
+### Triết lý "Let it crash" & Fault Tolerance
+*   Tránh việc bọc mọi dòng code bằng `try/catch` hoặc `begin/rescue` vì nó làm bẩn codebase và khó xác định trạng thái nhất quán của dữ liệu.
+*   Nếu có lỗi bất ngờ, hãy để process đó crash tự nhiên. Supervisor sẽ chịu trách nhiệm giám sát và tái tạo lại process đó với trạng thái khởi tạo sạch sẽ, an toàn đã biết trước.
 
 ---
 
-## 3. Phoenix & Ecto Optimizations
+## 2. Erlang/OTP Architecture & State Management
 
-### Tối ưu hóa truy vấn Database
-1.  **N+1 Query Problem:** Xảy ra khi bạn load danh sách bản ghi (ví dụ: 100 Posts), sau đó lặp qua từng bản ghi để load các bản ghi liên quan (ví dụ: load Comment của từng Post). Kết quả là tạo ra 1 + 100 câu truy vấn DB.
-    *   *Cách xử lý:* Sử dụng `Repo.preload/2` hoặc `join` trực tiếp trong query để Ecto thực hiện preloading thông minh bằng một vài câu SQL gọn nhẹ.
-2.  **Ecto.Multi:** 
-    *   Giúp gom nhiều thao tác database vào một database transaction duy nhất.
-    *   Cho phép kết hợp kết quả của bước trước làm input cho bước sau (ví dụ: lấy ID của User vừa tạo ở bước 1 để tạo Ví ở bước 2).
-    *   Nếu bất kỳ bước nào trong `Multi` thất bại, toàn bộ các bước trước đó sẽ được rollback tự động.
+### Tránh nghẽn cổ chai (Bottlenecks) trong GenServer
+*   **Nguyên nhân:** Bản chất GenServer xử lý các tin nhắn tuần tự (Single-threaded execution model). Nếu hàng ngàn process khác cùng gọi đồng bộ (`handle_call`) tới duy nhất một GenServer trung tâm, nó sẽ tạo ra hàng đợi mailbox khổng lồ và gây nghẽn (bottleneck).
+*   **Các giải pháp khắc phục:**
+    1.  **Phân mảnh trạng thái (Sharding/Partitioning):** Sử dụng `PartitionSupervisor` để chia nhỏ tải trọng ra nhiều GenServer workers song song dựa trên một hashing key (ví dụ: hash `user_id` để đưa request về đúng phân vùng worker).
+    2.  **Đọc/Ghi song song bằng ETS (Erlang Term Storage):** ETS cho phép đọc ghi dữ liệu in-memory trực tiếp từ bất kỳ process nào với tốc độ cực nhanh mà không cần đi qua mailbox của một GenServer. Hãy dùng GenServer làm Owner ghi dữ liệu, còn các process khác đọc trực tiếp từ ETS table.
+    3.  **Xử lý bất đồng bộ (Offloading):** Với các tác vụ tốn thời gian (như gửi email, gọi API bên thứ ba), GenServer không được xử lý trực tiếp trong `handle_call`. Thay vào đó, nó nên spawn một `Task` hoặc sử dụng `Task.Supervisor` để làm việc đó độc lập, sau đó trả về kết quả bất đồng bộ.
 
-### ❓ Câu hỏi phỏng vấn thực tế:
-*   **Q:** Bạn dùng công cụ nào để phát hiện các câu query chậm trong production?
-    *   **A:** Sử dụng thư viện `:telemetry` thu thập metrics thực thi của Ecto, kết hợp với Prometheus/Grafana để vẽ đồ thị latency. Trong môi trường local, sử dụng `Phoenix LiveDashboard` mục Ecto stats để xem trực tiếp các slow queries.
-*   **Q:** Làm thế nào để thực hiện khóa dòng (Row locking / Pessimistic locking) trong Ecto?
-    *   **A:** Sử dụng hàm `lock/2` trong query builder, ví dụ: `from(a in Account, where: a.id == ^id, lock: "FOR UPDATE")`. Việc này ngăn chặn race conditions khi nhiều process cùng lúc muốn cập nhật số dư của một tài khoản.
+### Supervision Trees & Strategies
+*   **one_for_one:** Thích hợp cho các worker độc lập. Một chết, một sống lại.
+*   **one_for_all:** Nếu các child processes phụ thuộc lẫn nhau, thiếu một đứa thì hệ thống không hoạt động được. Ví dụ: Process A đọc socket, Process B ghi log, Process C phân tích cú pháp. Một đứa chết -> tất cả cùng khởi động lại.
+*   **rest_for_one:** Các child processes được khởi tạo theo thứ tự tuyến tính phụ thuộc. Nếu process khởi tạo trước crash, các process khởi tạo sau nó sẽ bị kéo đổ theo và cùng restart.
+*   **DynamicSupervisor:** Chuyên dùng để khởi chạy động các worker trong runtime. Cần lưu ý sử dụng tùy chọn `restart: :transient` hoặc `:temporary` cho các worker động này để tránh việc supervisor cố gắng restart vô hạn một session đã logout hoặc kết thúc nhiệm vụ bình thường.
 
 ---
 
-## 🚀 Thử thách thực hành Ngày 1
-Hãy mở file [ledger_practice.exs](ledger_practice.exs) và hoàn thành các bài tập liên quan đến **Ecto.Multi** và **Concurrency locking**.
+## 3. Database (Ecto & PostgreSQL) & Web APIs (Phoenix & Absinthe)
+
+### Tối ưu hóa truy vấn Ecto
+1.  **Giải quyết N+1 Query triệt để:**
+    *   *Cách 1 (Preload):* `Repo.all(from p in Post, preload: [:comments])` - Ecto sẽ chạy 2 câu truy vấn riêng biệt: một câu lấy Posts, một câu lấy tất cả Comments của các Posts đó, rồi tự map lại ở RAM.
+    *   *Cách 2 (Inner/Left Join):* `from p in Post, join: c in assoc(p, :comments), preload: [comments: c]` - Ecto chạy duy nhất 1 câu SQL dùng `JOIN` để lấy toàn bộ dữ liệu. Phù hợp khi bạn cần lọc dữ liệu Post dựa trên điều kiện của Comment.
+2.  **Ecto.Multi vs DB Transactions:**
+    *   Không nên viết code lồng nhau dạng `Repo.transaction(fn -> ... end)` nếu có nhiều logic nghiệp vụ phức tạp vì nó khó debug, khó viết unit test độc lập cho từng phần.
+    *   `Ecto.Multi` là một cấu trúc dữ liệu mô tả các bước giao dịch dưới dạng một pipeline. Bạn có thể xây dựng nó một cách linh hoạt, truyền qua các module khác nhau trước khi thực thi thực tế bằng `Repo.transaction(multi)`.
+3.  **Khóa dòng (Database Row Locking):**
+    *   Sử dụng `lock: "FOR UPDATE"` trong Ecto query khi cập nhật số dư tài khoản hoặc số lượng tồn kho để ngăn chặn hiện tượng **Lost Update** khi 2 transactions chạy song song cùng đọc một giá trị và ghi đè lên nhau.
+
+### Tối ưu hóa GraphQL API với Absinthe
+*   **Vấn đề N+1 trong GraphQL:** Mỗi field resolver trong Absinthe chạy độc lập. Nếu user truy vấn danh sách `posts` kèm theo `author` của mỗi post, Absinthe sẽ gọi resolver của `author` N lần.
+*   **Giải pháp (Absinthe Dataloader):**
+    *   Dataloader là một công cụ giúp gom nhóm (batching) các request truy vấn database.
+    *   Thay vì chạy câu query ngay lập tức, Dataloader sẽ tạm dừng thực thi của resolver, gom tất cả các ID cần tìm kiếm, chạy duy nhất một câu query `SELECT ... WHERE id IN (...)` để lấy toàn bộ data, sau đó phân phối lại kết quả cho các resolver.
+
+---
+
+## 🚀 Câu hỏi phỏng vấn thử thách Ngày 1
+
+1.  *Làm thế nào để truyền một lượng lớn dữ liệu (> 1GB) giữa hai process Elixir trên cùng một node mà không làm tràn bộ nhớ heap?*
+    *   **Trả lời:** Sử dụng các Binary lớn hơn 64 bytes. Do chúng được lưu trữ ở Off-heap (Binary Heap toàn cục), việc truyền message chứa binary này giữa các process chỉ là việc copy một con trỏ tham chiếu (24 bytes) và tăng Reference Counter, hoàn toàn không copy dữ liệu thực tế giúp tốc độ truyền tải cực nhanh và tiết kiệm bộ nhớ.
+2.  *Khi nào bạn nên dùng `DynamicSupervisor` kết hợp với `Registry` và làm sao để xử lý race condition khi 2 request đồng thời yêu cầu khởi tạo worker cho cùng một ID?*
+    *   **Trả lời:** Ta dùng DynamicSupervisor + Registry để quản lý các thực thể động như Session chat, User shopping cart. Để tránh race condition khi khởi tạo trùng, ta cấu hình Registry ở dạng `:unique`. Khi gọi `DynamicSupervisor.start_child`, Registry sẽ chặn việc đăng ký trùng tên và trả về lỗi `{:error, {:already_started, pid}}`. Chúng ta sẽ match lỗi này và lấy trực tiếp `pid` của process đang chạy thay vì khởi tạo mới.
