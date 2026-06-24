@@ -7,7 +7,7 @@ Thư mục này chứa toàn bộ tài liệu lý thuyết, câu hỏi phỏng v
 ## 📅 Lịch Trình Chi Tiết
 
 ### **Ngày 1: Core OTP, Database (Ecto/Postgres) & Coding**
-*   **Lý thuyết (Sáng):** Xem chi tiết tại [day1_prep.md](day1_prep.md). Tập trung vào BEAM VM scheduling & memory internals, GenServer đệ quy đuôi mailbox mechanics, và Ecto optimizations.
+*   **Lý thuyết (Sáng):** Xem chi tiết tại [otp_database_prep.md](otp_database_prep.md). Tập trung vào BEAM VM scheduling & memory internals, GenServer đệ quy đuôi mailbox mechanics, và Ecto optimizations.
 *   **Thực hành (Chiều):** Có 5 bài tập thực hành được phân tách thành các thư mục riêng biệt:
     1.  **Ledger Transaction (Giao dịch sổ cái):** Giao dịch an toàn sử dụng `Ecto.Multi` và Sandbox isolation.
         *   Thư mục: [exercises/01_ledger](exercises/01_ledger)
@@ -32,7 +32,7 @@ Thư mục này chứa toàn bộ tài liệu lý thuyết, câu hỏi phỏng v
 *   **Luyện tập (Tối):** Tự trả lời các câu hỏi phản xạ nhanh trong tài liệu Ngày 1.
 
 ### **Ngày 2: Distributed Systems, Message Brokers, DevOps & System Design**
-*   **Lý thuyết & Kiến trúc (Sáng):** Xem chi tiết tại [day2_prep.md](day2_prep.md). Tập trung vào Clustering, Message Brokers (Kafka vs RabbitMQ), Observability (:telemetry, Prometheus) và DevOps.
+*   **Lý thuyết & Kiến trúc (Sáng):** Xem chi tiết tại [distributed_devops_prep.md](distributed_devops_prep.md). Tập trung vào Clustering, Message Brokers (Kafka vs RabbitMQ), Observability (:telemetry, Prometheus) và DevOps.
 *   **Thực hành (Chiều):** Có 2 bài tập thực hành về Concurrency & Rate limiting:
     1.  **Rate Limiter:** GenServer quản lý tần suất request trên mỗi IP có reset timer.
         *   Thư mục: [exercises/05_rate_limiter](exercises/05_rate_limiter)
