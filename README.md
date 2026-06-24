@@ -1,6 +1,6 @@
-# 🎯 Lộ trình Ôn tập 2 Ngày - Senior Elixir Interview (10pearls)
+# 🎯 Lộ trình Ôn tập 2 Ngày - Senior Elixir Interview
 
-Thư mục này chứa toàn bộ tài liệu lý thuyết, câu hỏi phỏng vấn thực tế, cẩm nang kiến thức bổ trợ và bài tập coding giúp bạn chuẩn bị nhanh nhất trong **2 ngày** cho buổi phỏng vấn tại 10pearls.
+Thư mục này chứa toàn bộ tài liệu lý thuyết, câu hỏi phỏng vấn thực tế, cẩm nang kiến thức bổ trợ và bài tập coding giúp bạn chuẩn bị nhanh nhất trong **2 ngày** cho buổi phỏng vấn Senior Elixir.
 
 ---
 
@@ -78,7 +78,7 @@ elixir exercises/06_batch_processor/batcher_practice.exs
 
 ---
 
-## 💡 Lời khuyên quan trọng khi phỏng vấn Senior tại 10pearls
+## 💡 Lời khuyên quan trọng khi phỏng vấn Senior Elixir
 *   **Think Out Loud:** Khi live coding, hãy liên tục giải thích tư duy của bạn (ví dụ: tại sao dùng pattern matching thay vì if/else, tại sao dùng `Ecto.Multi` thay vì transaction block thông thường).
 *   **Trade-off Mindset:** Khi thiết kế hệ thống, luôn nêu rõ ưu và nhược điểm của từng công nghệ (ví dụ: Redis vs ETS, Kafka vs RabbitMQ). Không có giải pháp hoàn hảo, chỉ có giải pháp phù hợp nhất với bối cảnh.
 *   **STAR structure:** Khi trả lời các câu hỏi tình huống (behavioral), hãy đi thẳng vào bối cảnh (Situation), nhiệm vụ (Task), hành động cụ thể của bạn (Action) và kết quả đo lường được (Result).

@@ -1,6 +1,6 @@
 # 🗺️ Cẩm Nang Luyện Tập: Thiết Kế Hệ Thống (System Design Cookbook)
 
-Đối với vị trí Senior Engineer tại 10pearls, vòng System Design không kiểm tra xem bạn có nhớ cú pháp code hay không, mà kiểm tra khả năng **nhìn bức tranh toàn cảnh (bird's-eye view)**, **phân tích tải (back-of-the-envelope estimation)**, và đưa ra quyết định **đánh đổi (trade-offs)** một cách logic.
+Đối với vị trí Senior Engineer, vòng System Design không kiểm tra xem bạn có nhớ cú pháp code hay không, mà kiểm tra khả năng **nhìn bức tranh toàn cảnh (bird's-eye view)**, **phân tích tải (back-of-the-envelope estimation)**, và đưa ra quyết định **đánh đổi (trade-offs)** một cách logic.
 
 Tài liệu này cung cấp khung sườn (framework) chuẩn để trả lời và các kịch bản thiết kế hệ thống thực tế.
 

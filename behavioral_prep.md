@@ -1,6 +1,6 @@
 # 🤝 Cẩm Nang Luyện Tập: Phỏng Vấn Hành Vi & Dẫn Dắt (Behavioral & Leadership)
 
-Interviewer của 10pearls muốn kiểm tra xem bạn có phải là một **Senior thực thụ (về cả mặt con người và kỹ năng mềm)** hay chỉ là một lập trình viên biết viết code lâu năm. 
+Interviewer muốn kiểm tra xem bạn có phải là một **Senior thực thụ (về cả mặt con người và kỹ năng mềm)** hay chỉ là một lập trình viên biết viết code lâu năm. 
 
 Tài liệu này hướng dẫn bạn cách xây dựng các câu chuyện của riêng mình theo mô hình **STAR** chuẩn mực để trả lời các câu hỏi tình huống.
 

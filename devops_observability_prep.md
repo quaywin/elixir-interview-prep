@@ -1,6 +1,6 @@
 # 🛠️ Cẩm Nang Luyện Tập: DevOps & Giám Sát Hệ Thống (DevOps & Observability Cookbook)
 
-Một Senior Elixir Engineer tại 10pearls không chỉ viết code tốt ở môi trường local mà phải hiểu rõ cách đóng gói (containerization), triển khai (deployment) và giám sát (monitoring) ứng dụng trên production.
+Một Senior Elixir Engineer không chỉ viết code tốt ở môi trường local mà phải hiểu rõ cách đóng gói (containerization), triển khai (deployment) và giám sát (monitoring) ứng dụng trên production.
 
 Tài liệu này tổng hợp các kiến thức thực chiến về DevOps và Giám sát hệ thống.
 
