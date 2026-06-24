@@ -1,47 +1,47 @@
-# 💡 Giải Thích Bài Tập: Write-Through Cache (`ETS` & `GenServer`)
+# 💡 Exercise Explanation: Write-Through Cache (`ETS` & `GenServer`)
 
-## 1. Yêu Cầu Thực Tế & Thiết Kế
-Trong các hệ thống có lượng truy cập siêu lớn (High Throughput), ví dụ như API Gateway, User Session validator, Product Catalog, số lượng request đọc dữ liệu luôn gấp hàng chục tới hàng trăm lần request ghi dữ liệu.
-Nếu tất cả các request đọc đều phải gửi message qua một GenServer duy nhất, GenServer đó sẽ bị nghẽn (bottleneck) do xử lý mailbox tuần tự.
+## 1. Real-world Requirements & Design
+In extremely high-throughput systems (such as API Gateways, User Session validators, or Product Catalogs), the number of read requests is typically tens to hundreds of times higher than write requests.
+If every read request had to send a message through a single GenServer, that GenServer would become a bottleneck due to sequential mailbox processing.
 
-**Giải pháp:**
-*   Sử dụng **ETS (Erlang Term Storage)** để lưu cache in-memory. Bảng ETS được cấu hình ở chế độ `:protected`.
-*   **Thao tác đọc (Read):** Thực hiện trực tiếp trên context của caller process (như Phoenix Controller) bằng cách gọi thẳng vào bộ nhớ của bảng ETS. Hoàn toàn không đi qua GenServer mailbox. Nhiều process có thể đọc bảng ETS này song song 100%.
-*   **Thao tác ghi (Write):** Bắt buộc phải gửi message qua GenServer `CacheService`. GenServer này sẽ thực hiện ghi đồng bộ xuống Database trước để đảm bảo dữ liệu được lưu vĩnh viễn (Persisted), sau đó mới cập nhật lại dữ liệu mới vào bảng ETS cache.
+**Solution:**
+*   Use **ETS (Erlang Term Storage)** for in-memory caching. The ETS table is configured as `:protected`.
+*   **Read Operation:** Executed directly in the context of the caller process (e.g., Phoenix Controller) by querying the ETS table. It does not go through the GenServer's mailbox. Multiple processes can read from this ETS table with 100% concurrency.
+*   **Write Operation:** Must send a message through the `CacheService` GenServer. This GenServer performs a synchronous write to the Database first to guarantee durability (Persistence), and then updates the ETS cache table with the new data.
 
 ---
 
-## 2. Giải Thích Code Triển Khai
+## 2. Implementation Code Explanation
 
-### 2.1. Đọc Trực Tiếp Từ Caller Context (Không qua GenServer)
+### 2.1. Reading Directly from Caller Context (Bypassing GenServer)
 ```elixir
 def read(key) do
-  # Hàm này được thực thi bởi chính process gọi nó (ví dụ: Task hoặc Web Connection process)
+  # This function is executed by the caller process itself (e.g., a Task or Web Connection process)
   case :ets.lookup(@table_name, key) do
     [{^key, value}] -> {:ok, value}
     [] -> {:error, :not_found}
   end
 end
 ```
-*   Nhờ cơ chế này, tốc độ đọc gần như đạt mức tối đa của RAM (~vài triệu lượt đọc/giây). GenServer `CacheService` hoàn toàn rảnh rỗi để tập trung xử lý các việc khác.
+*   Thanks to this mechanism, read throughput can approach the physical limits of RAM (up to several million reads/second). The `CacheService` GenServer remains completely free to focus on other tasks.
 
-### 2.2. Giao Dịch Ghi Đồng Bộ Qua GenServer Owner
+### 2.2. Synchronous Write Transaction via GenServer Owner
 ```elixir
-# Khởi tạo bảng ETS trong init/1 của GenServer
+# Initialize the ETS table in the GenServer's init/1
 def init(_opts) do
-  # :set -> Cấu trúc Key-Value độc nhất
-  # :protected -> Chỉ Owner process (GenServer này) được ghi, các process khác chỉ được đọc
-  # :named_table -> Cho phép dùng tên atom :CacheTable thay vì quản lý qua tid (Table ID)
+  # :set -> Unique Key-Value structure
+  # :protected -> Only the Owner process (this GenServer) can write; other processes can only read
+  # :named_table -> Allows using the atom name :CacheTable instead of managing via tid (Table ID)
   :ets.new(@table_name, [:set, :protected, :named_table])
   {:ok, %{}}
 end
 
-# Xử lý transaction ghi
+# Handle write transaction
 def handle_call({:write, key, value}, _from, state) do
-  # 1. Ghi dữ liệu xuống DB trước
+  # 1. Write data to DB first
   case MockDB.write(key, value) do
     :ok ->
-      # 2. Ghi DB thành công -> ghi đè vào cache ETS
+      # 2. DB write success -> overwrite the ETS cache
       :ets.insert(@table_name, {key, value})
       {:reply, :ok, state}
     
@@ -53,15 +53,15 @@ end
 
 ---
 
-## 3. Các Điểm Quan Trọng Dưới Góc Nhìn Kỹ Thuật
+## 3. Critical Technical Aspects
 
-### 3.1. Tại sao bảng ETS phải cấu hình `:protected`?
-*   `:private`: Chỉ duy nhất Owner process được đọc và ghi. Các process khác gọi `:ets.lookup` sẽ bị crash với lỗi `:badarg`. Không thể dùng làm cache dùng chung.
-*   `:public`: Bất kỳ process nào cũng được đọc và ghi. Dễ dẫn đến tình trạng **Race Condition** dữ liệu (ví dụ: Process A đọc DB ghi đè giá trị cũ vào ETS ngay lúc Process B đang ghi giá trị mới).
-*   `:protected`: Đảm bảo tính nhất quán cao nhất. Chỉ có GenServer `CacheService` mới có quyền thay đổi dữ liệu bảng ETS sau khi đã đảm bảo ghi thành công xuống Database. Tất cả các process khác chỉ có quyền đọc dữ liệu tĩnh, loại bỏ hoàn toàn khả năng xung đột ghi dữ liệu.
+### 3.1. Why must the ETS table be configured as `:protected`?
+*   `:private`: Only the Owner process can read and write. Other processes calling `:ets.lookup` will crash with a `:badarg` error. Cannot be used as a shared cache.
+*   `:public`: Any process can read and write. This easily leads to data **Race Conditions** (e.g., Process A reads the DB and overwrites the ETS cache with stale data at the exact moment Process B is writing new data).
+*   `:protected`: Guarantees the highest consistency. Only the `CacheService` GenServer is authorized to modify the ETS table's data after confirming a successful write to the Database. All other processes only have read access to the static data, eliminating write conflicts entirely.
 
-### 3.2. Vấn đề Cache Invalidation (Hủy Cache)
-Trong thiết kế Write-Through:
-*   Dữ liệu luôn được ghi vào DB và Cache đồng thời, nên Cache không bao giờ bị lệch dữ liệu so với DB (Strong consistency).
-*   Tuy nhiên, nếu Database bị thay đổi trực tiếp bên ngoài (ví dụ: quản trị viên sửa DB bằng tay), Cache sẽ bị out-of-date (lệch dữ liệu). 
-*   *Cách khắc phục:* Cần có cơ chế lắng nghe sự kiện thay đổi của database (CDC - Change Data Capture) hoặc thiết lập thời gian hết hạn (TTL - Time To Live) cho từng bản ghi trong ETS để tự động xóa sau một khoảng thời gian.
+### 3.2. Cache Invalidation
+In a Write-Through design:
+*   Data is always written to the DB and the Cache concurrently, so the Cache is never out of sync with the DB (Strong consistency).
+*   However, if the Database is modified directly from the outside (for example, an administrator manually edits the DB), the Cache will become out-of-date (stale data). 
+*   *Workaround:* A database change listener mechanism (CDC - Change Data Capture) is needed, or a Time To Live (TTL) should be established for each record in ETS to automatically evict it after a period.

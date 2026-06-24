@@ -1,28 +1,28 @@
 # ==============================================================================
-# BÀI TẬP THỰC HÀNH NÂNG CAO: DYNAMIC PROCESS MANAGEMENT (REGISTRY & DYNAMICSUPERVISOR)
+# ADVANCED PRACTICE EXERCISE: DYNAMIC PROCESS MANAGEMENT (REGISTRY & DYNAMICSUPERVISOR)
 # ==============================================================================
-# Đề bài: Xây dựng hệ thống quản lý session đăng nhập của người dùng.
-# Mỗi khi user đăng nhập, hệ thống sẽ khởi chạy một GenServer đại diện cho session đó
-# để lưu trữ các thông tin tạm thời (ví dụ: giỏ hàng, token) in-memory.
+# Problem: Build a user login session management system.
+# Whenever a user logs in, the system will start a GenServer representing that session
+# to store temporary information (e.g., shopping cart, tokens) in-memory.
 #
-# Yêu cầu:
-# 1. Sử dụng Registry để đăng ký tên động cho mỗi session process dưới dạng:
+# Requirements:
+# 1. Use Registry to dynamically register a name for each session process as:
 #    `{:via, Registry, {UserRegistry, user_id}}`
-# 2. Sử dụng DynamicSupervisor để giám sát và khởi chạy các session process động.
-# 3. Định nghĩa module `SessionWorker` (GenServer) lưu trữ state của session.
-# 4. Định nghĩa module `SessionManager` cung cấp các API:
-#    - `start_session(user_id)`: Khởi chạy session mới.
-#    - `get_session_data(user_id)`: Lấy dữ liệu session hiện tại.
-#    - `update_session_data(user_id, key, value)`: Cập nhật dữ liệu session.
-#    - `stop_session(user_id)`: Tắt session process khi user logout.
+# 2. Use DynamicSupervisor to monitor and start session processes dynamically.
+# 3. Define the `SessionWorker` module (GenServer) to store session state.
+# 4. Define the `SessionManager` module to provide APIs:
+#    - `start_session(user_id)`: Start a new session.
+#    - `get_session_data(user_id)`: Get current session data.
+#    - `update_session_data(user_id, key, value)`: Update session data.
+#    - `stop_session(user_id)`: Stop session process when user logs out.
 #
-# Chạy file này bằng lệnh: elixir session_manager_practice.exs
+# Run this file with the command: elixir session_manager_practice.exs
 # ==============================================================================
 
 defmodule SessionWorker do
   use GenServer, restart: :transient
 
-  # Helper để sinh định danh via tuple dùng cho Registry
+  # Helper to generate via tuple identifier for Registry
   def via_tuple(user_id) do
     {:via, Registry, {UserRegistry, user_id}}
   end
@@ -62,8 +62,8 @@ end
 
 defmodule SessionManager do
   @doc """
-  Khởi chạy một SessionWorker mới dưới DynamicSupervisor (tên là UserSessionSupervisor).
-  Nếu session đã tồn tại cho user_id này, trả về `{:error, :already_started}`.
+  Starts a new SessionWorker under DynamicSupervisor (named UserSessionSupervisor).
+  If a session already exists for this user_id, returns `{:error, :already_started}`.
   """
   def start_session(user_id) do
     case DynamicSupervisor.start_child(UserSessionSupervisor, {SessionWorker, user_id}) do
@@ -74,8 +74,8 @@ defmodule SessionManager do
   end
 
   @doc """
-  Lấy dữ liệu state hiện tại của session từ user_id.
-  Nếu session không tồn tại, trả về `{:error, :not_found}`.
+  Gets the current state data of the session for a user_id.
+  If the session does not exist, returns `{:error, :not_found}`.
   """
   def get_session_data(user_id) do
     case Registry.lookup(UserRegistry, user_id) do
@@ -85,8 +85,8 @@ defmodule SessionManager do
   end
 
   @doc """
-  Cập nhật dữ liệu của session từ user_id.
-  Nếu session không tồn tại, trả về `{:error, :not_found}`.
+  Updates the session data for a user_id.
+  If the session does not exist, returns `{:error, :not_found}`.
   """
   def update_session_data(user_id, key, value) do
     case Registry.lookup(UserRegistry, user_id) do
@@ -96,14 +96,16 @@ defmodule SessionManager do
   end
 
   @doc """
-  Tắt session process khi user logout.
+  Stops the session process when a user logs out.
   """
   def stop_session(user_id) do
     case Registry.lookup(UserRegistry, user_id) do
-      [{pid, _value}] -> 
+      [{pid, _value}] ->
         DynamicSupervisor.terminate_child(UserSessionSupervisor, pid)
         :ok
-      [] -> {:error, :not_found}
+
+      [] ->
+        {:error, :not_found}
     end
   end
 end
@@ -115,13 +117,13 @@ defmodule SessionManagerTest do
   use ExUnit.Case
 
   setup do
-    # Khởi động Registry và DynamicSupervisor dùng riêng cho test
+    # Start Registry and DynamicSupervisor specifically for testing
     start_supervised!({Registry, keys: :unique, name: UserRegistry})
     start_supervised!({DynamicSupervisor, strategy: :one_for_one, name: UserSessionSupervisor})
     :ok
   end
 
-  test "khởi tạo session thành công và lấy dữ liệu trống ban đầu" do
+  test "successfully starts session and retrieves initial empty data" do
     assert {:ok, pid} = SessionManager.start_session("user_123")
     assert is_pid(pid)
 
@@ -129,27 +131,30 @@ defmodule SessionManagerTest do
     assert data == %{}
   end
 
-  test "không cho phép tạo trùng session cho cùng 1 user" do
+  test "does not allow creating duplicate sessions for the same user" do
     assert {:ok, _pid} = SessionManager.start_session("user_123")
     assert {:error, :already_started} = SessionManager.start_session("user_123")
   end
 
-  test "cập nhật và lấy dữ liệu session thành công" do
+  test "successfully updates and retrieves session data" do
     assert {:ok, _pid} = SessionManager.start_session("user_456")
-    assert {:ok, :ok} = SessionManager.update_session_data("user_456", :cart, ["item_1", "item_2"])
+
+    assert {:ok, :ok} =
+             SessionManager.update_session_data("user_456", :cart, ["item_1", "item_2"])
+
     assert {:ok, data} = SessionManager.get_session_data("user_456")
     assert data == %{cart: ["item_1", "item_2"]}
   end
 
-  test "trả về error khi thao tác trên session không tồn tại" do
+  test "returns error when operating on a non-existent session" do
     assert {:error, :not_found} = SessionManager.get_session_data("non_existent")
     assert {:error, :not_found} = SessionManager.update_session_data("non_existent", :key, "val")
   end
 
-  test "dừng session thành công (logout) và giải phóng process" do
+  test "successfully stops session (logout) and terminates process" do
     assert {:ok, _pid} = SessionManager.start_session("user_789")
     assert :ok = SessionManager.stop_session("user_789")
-    # Session không còn tồn tại nữa
+    # Session no longer exists
     assert {:error, :not_found} = SessionManager.get_session_data("user_789")
   end
 end

@@ -1,90 +1,90 @@
-# 🎯 Lộ trình Ôn tập 2 Ngày - Senior Elixir Interview
+# 🎯 Structured Curriculum - Senior Elixir Interview Roadmap
 
-Thư mục này chứa toàn bộ tài liệu lý thuyết, câu hỏi phỏng vấn thực tế, cẩm nang kiến thức bổ trợ và bài tập coding giúp bạn chuẩn bị nhanh nhất trong **2 ngày** cho buổi phỏng vấn Senior Elixir.
-
----
-
-## 📅 Lịch Trình Chi Tiết
-
-### **Ngày 1: Core OTP, Database (Ecto/Postgres) & Coding**
-*   **Lý thuyết (Sáng):** Xem chi tiết tại [otp_database_prep.md](otp_database_prep.md). Tập trung vào BEAM VM scheduling & memory internals, GenServer đệ quy đuôi mailbox mechanics, và Ecto optimizations.
-*   **Thực hành (Chiều):** Có 5 bài tập thực hành được phân tách thành các thư mục riêng biệt:
-    1.  **Ledger Transaction (Giao dịch sổ cái):** Giao dịch an toàn sử dụng `Ecto.Multi` và Sandbox isolation.
-        *   Thư mục: [exercises/01_ledger](exercises/01_ledger)
-        *   Mã nguồn: [ledger_practice.exs](exercises/01_ledger/ledger_practice.exs)
-        *   Tài liệu giải thích: [ledger_explain.md](exercises/01_ledger/ledger_explain.md)
-    2.  **Session Manager (Quản lý phiên):** Quản lý process động sử dụng `DynamicSupervisor` và `Registry` định danh.
-        *   Thư mục: [exercises/02_session_manager](exercises/02_session_manager)
-        *   Mã nguồn: [session_manager_practice.exs](exercises/02_session_manager/session_manager_practice.exs)
-        *   Tài liệu giải thích: [session_manager_explain.md](exercises/02_session_manager/session_manager_explain.md)
-    3.  **Job Queue (Hàng đợi công việc - Nâng cao):** Điều phối các Task chạy bất đồng bộ với giới hạn song song (`max_concurrency`) thông qua `Task.Supervisor` và giám sát (`monitor`).
-        *   Thư mục: [exercises/03_job_queue](exercises/03_job_queue)
-        *   Mã nguồn: [job_queue_practice.exs](exercises/03_job_queue/job_queue_practice.exs)
-        *   Tài liệu giải thích: [job_queue_explain.md](exercises/03_job_queue/job_queue_explain.md)
-    4.  **Write-Through Cache (Ghi trực tiếp - Nâng cao):** Thiết kế cache với tốc độ đọc cực nhanh song song bằng cách đọc trực tiếp từ bảng ETS, đồng thời đảm bảo an toàn ghi đồng bộ qua GenServer và DB.
-        *   Thư mục: [exercises/04_write_through_cache](exercises/04_write_through_cache)
-        *   Mã nguồn: [write_through_cache_practice.exs](exercises/04_write_through_cache/write_through_cache_practice.exs)
-        *   Tài liệu giải thích: [write_through_cache_explain.md](exercises/04_write_through_cache/write_through_cache_explain.md)
-    5.  **Data Structures & Algorithms (Cấu trúc dữ liệu & Thuật toán):** Tổng hợp các thuật toán cổ điển giải bằng lập trình hàm Elixir (Đảo ngược từ, Nhóm Anagrams, Đóng mở ngoặc Stack).
-        *   Thư mục: [exercises/07_algorithms](exercises/07_algorithms)
-        *   Mã nguồn: [algorithm_practice.exs](exercises/07_algorithms/algorithm_practice.exs)
-        *   Cẩm nang mẹo thuật toán: [algorithm_tricks.md](exercises/07_algorithms/algorithm_tricks.md)
-*   **Luyện tập (Tối):** Tự trả lời các câu hỏi phản xạ nhanh trong tài liệu Ngày 1.
-
-### **Ngày 2: Distributed Systems, Message Brokers, DevOps & System Design**
-*   **Lý thuyết & Kiến trúc (Sáng):** Xem chi tiết tại [distributed_devops_prep.md](distributed_devops_prep.md). Tập trung vào Clustering, Message Brokers (Kafka vs RabbitMQ), Observability (:telemetry, Prometheus) và DevOps.
-*   **Thực hành (Chiều):** Có 2 bài tập thực hành về Concurrency & Rate limiting:
-    1.  **Rate Limiter:** GenServer quản lý tần suất request trên mỗi IP có reset timer.
-        *   Thư mục: [exercises/05_rate_limiter](exercises/05_rate_limiter)
-        *   Mã nguồn: [rate_limiter_practice.exs](exercises/05_rate_limiter/rate_limiter_practice.exs)
-        *   Tài liệu giải thích: [rate_limiter_explain.md](exercises/05_rate_limiter/rate_limiter_explain.md)
-    2.  **Batch Processor:** gom nhóm dữ liệu theo lô (batching) tự động flush dựa trên kích thước hoặc timeout.
-        *   Thư mục: [exercises/06_batch_processor](exercises/06_batch_processor)
-        *   Mã nguồn: [batcher_practice.exs](exercises/06_batch_processor/batcher_practice.exs)
-        *   Tài liệu giải thích: [batcher_explain.md](exercises/06_batch_processor/batcher_explain.md)
-*   **System Design & Mock (Tối):** Thiết kế Notification Gateway (100k CCU) và chuẩn bị các câu chuyện STAR.
+This directory contains comprehensive theoretical resources, real-world interview questions, supplementary cookbooks, and coding exercises to guide your preparation for a Senior Elixir interview.
 
 ---
 
-## 📚 Cẩm Nang Luyện Tập Kiến Thức Bổ Trợ (Phi Elixir)
+## 📅 Curriculum Sections
 
-Để đạt điểm tối đa trong các vòng phỏng vấn Senior mở rộng, hãy chủ động ôn tập thêm các tài liệu hướng dẫn sau:
+### **Section 1: Core OTP, Database (Ecto/Postgres) & Coding**
+*   **Theory (Conceptual):** Detailed guide at [otp_database_prep.md](otp_database_prep.md). Focuses on BEAM VM scheduling & memory internals, tail-recursive GenServer mailbox mechanics, and Ecto optimizations.
+*   **Practice (Coding):** Features 5 practical exercises separated into individual directories:
+    1.  **Ledger Transaction:** Secure financial ledger transactions using `Ecto.Multi` and sandbox isolation.
+        *   Directory: [exercises/01_ledger](exercises/01_ledger)
+        *   Source Code: [ledger_practice.exs](exercises/01_ledger/ledger_practice.exs)
+        *   Explanation Guide: [ledger_explain.md](exercises/01_ledger/ledger_explain.md)
+    2.  **Session Manager:** Dynamic process supervision using `DynamicSupervisor` and naming registration with `Registry`.
+        *   Directory: [exercises/02_session_manager](exercises/02_session_manager)
+        *   Source Code: [session_manager_practice.exs](exercises/02_session_manager/session_manager_practice.exs)
+        *   Explanation Guide: [session_manager_explain.md](exercises/02_session_manager/session_manager_explain.md)
+    3.  **Job Queue (Advanced):** Orchestrating asynchronous tasks with concurrency limits (`max_concurrency`) using `Task.Supervisor` and process monitoring (`monitor`).
+        *   Directory: [exercises/03_job_queue](exercises/03_job_queue)
+        *   Source Code: [job_queue_practice.exs](exercises/03_job_queue/job_queue_practice.exs)
+        *   Explanation Guide: [job_queue_explain.md](exercises/03_job_queue/job_queue_explain.md)
+    4.  **Write-Through Cache (Advanced):** Designing an ultra-fast read-optimized cache utilizing concurrent ETS reads while ensuring synchronous write safety via a GenServer and DB back-end.
+        *   Directory: [exercises/04_write_through_cache](exercises/04_write_through_cache)
+        *   Source Code: [write_through_cache_practice.exs](exercises/04_write_through_cache/write_through_cache_practice.exs)
+        *   Explanation Guide: [write_through_cache_explain.md](exercises/04_write_through_cache/write_through_cache_explain.md)
+    5.  **Data Structures & Algorithms:** A compilation of classic algorithms solved using Elixir functional patterns (Word Reversal, Anagram Grouping, Bracket Validation using Stack).
+        *   Directory: [exercises/07_algorithms](exercises/07_algorithms)
+        *   Source Code: [algorithm_practice.exs](exercises/07_algorithms/algorithm_practice.exs)
+        *   Algorithm Tricks Cookbook: [algorithm_tricks.md](exercises/07_algorithms/algorithm_tricks.md)
+*   **Review:** Self-assess with the quick-response question guide for this section.
 
-1.  **[Cẩm nang Thiết kế Hệ thống (System Design Cookbook)](system_design_prep.md):** Khung sườn 4 bước trả lời phỏng vấn kiến trúc, kịch bản thiết kế hệ thống đấu giá trực tuyến (Auction System) xử lý race condition và hệ thống gửi tin nhắn diện rộng (Mass Notification) xử lý rate limits/backpressure.
-2.  **[Cẩm nang Phỏng vấn Hành vi & Dẫn dắt (Behavioral & Leadership)](behavioral_prep.md):** Cách xây dựng câu chuyện theo công thức STAR. Kịch bản giải quyết bất đồng ý kiến kỹ thuật trong team và cách mentor cho thành viên mới làm quen với lập trình hàm (FP).
-3.  **[Cẩm nang DevOps & Giám sát (DevOps & Observability Cookbook)](devops_observability_prep.md):** Viết Dockerfile tối ưu kích thước image (<80MB) tăng tính bảo mật, và cấu hình giám sát các chỉ số bộ nhớ/process BEAM VM trên Prometheus/Grafana.
+### **Section 2: Distributed Systems, Message Brokers, DevOps & System Design**
+*   **Theory & Architecture:** Detailed guide at [distributed_devops_prep.md](distributed_devops_prep.md). Focuses on clustering, message brokers (Kafka vs. RabbitMQ), observability (:telemetry, Prometheus), and DevOps practices.
+*   **Practice (Coding):** Features 2 concurrency & rate-limiting exercises:
+    1.  **Rate Limiter:** A GenServer to manage request frequencies per IP with a reset timer.
+        *   Directory: [exercises/05_rate_limiter](exercises/05_rate_limiter)
+        *   Source Code: [rate_limiter_practice.exs](exercises/05_rate_limiter/rate_limiter_practice.exs)
+        *   Explanation Guide: [rate_limiter_explain.md](exercises/05_rate_limiter/rate_limiter_explain.md)
+    2.  **Batch Processor:** Auto-flush data buffering (batching) triggered by batch size or timeout thresholds.
+        *   Directory: [exercises/06_batch_processor](exercises/06_batch_processor)
+        *   Source Code: [batcher_practice.exs](exercises/06_batch_processor/batcher_practice.exs)
+        *   Explanation Guide: [batcher_explain.md](exercises/06_batch_processor/batcher_explain.md)
+*   **System Design & Mock Preparation:** Designing a high-concurrency Notification Gateway (100k CCU) and preparing behavioral stories using the STAR method.
 
 ---
 
-## 💻 Hướng Dẫn Chạy Bài Tập Thực Hành (Live Coding)
+## 📚 Supplementary Non-Elixir Study Cookbooks
 
-Các bài tập thực hành được thiết kế dưới dạng file script Elixir độc lập (`.exs`), đã tích hợp sẵn framework test `ExUnit`. Bạn có thể chạy trực tiếp bằng terminal mà không cần khởi tạo dự án Mix mới.
+To maximize your performance in comprehensive Senior rounds, proactively review these dedicated guides:
 
-Ví dụ:
+1.  **[System Design Cookbook](system_design_prep.md):** A structured 4-step framework for architectural interviews. Contains scenarios on designing an online auction system resolving race conditions and a mass notification gateway addressing rate-limiting & backpressure.
+2.  **[Behavioral & Leadership Cookbook](behavioral_prep.md):** Constructing stories with the STAR method. Scenarios cover resolving technical disagreements within a team and mentoring engineers transitioning to functional programming (FP).
+3.  **[DevOps & Observability Cookbook](devops_observability_prep.md):** Writing size-optimized, secure Dockerfiles (<80MB) and configuring Prometheus/Grafana to monitor memory and process metrics in the BEAM VM.
+
+---
+
+## 💻 Running the Live Coding Exercises
+
+These practical exercises are designed as self-contained Elixir script files (`.exs`) with built-in `ExUnit` test suites. You can run them directly from the terminal without creating a full Mix project.
+
+Examples:
 ```bash
-# Ngày 1
+# Section 1 Coding Exercises
 elixir exercises/01_ledger/ledger_practice.exs
 elixir exercises/02_session_manager/session_manager_practice.exs
 elixir exercises/03_job_queue/job_queue_practice.exs
 elixir exercises/04_write_through_cache/write_through_cache_practice.exs
 elixir exercises/07_algorithms/algorithm_practice.exs
 
-# Ngày 2
+# Section 2 Coding Exercises
 elixir exercises/05_rate_limiter/rate_limiter_practice.exs
 elixir exercises/06_batch_processor/batcher_practice.exs
 ```
 
-*Mỗi thư mục đều chứa sẵn mã nguồn code mẫu đầy đủ và tài liệu giải thích chi tiết bản chất cơ chế của bài tập đó.*
+*Each directory includes complete reference implementations and step-by-step explanations of the underlying mechanisms.*
 
 ---
 
-## 💡 Lời khuyên quan trọng khi phỏng vấn Senior Elixir
-*   **Think Out Loud:** Khi live coding, hãy liên tục giải thích tư duy của bạn (ví dụ: tại sao dùng pattern matching thay vì if/else, tại sao dùng `Ecto.Multi` thay vì transaction block thông thường).
-*   **Trade-off Mindset:** Khi thiết kế hệ thống, luôn nêu rõ ưu và nhược điểm của từng công nghệ (ví dụ: Redis vs ETS, Kafka vs RabbitMQ). Không có giải pháp hoàn hảo, chỉ có giải pháp phù hợp nhất với bối cảnh.
-*   **STAR structure:** Khi trả lời các câu hỏi tình huống (behavioral), hãy đi thẳng vào bối cảnh (Situation), nhiệm vụ (Task), hành động cụ thể của bạn (Action) và kết quả đo lường được (Result).
+## 💡 Key Tips for Senior Elixir Interviews
+*   **Think Out Loud:** During live coding, explain your thought process continuously (e.g., explain why you choose pattern matching over if/else, or why you use `Ecto.Multi` instead of a plain transaction block).
+*   **Trade-off Mindset:** When designing systems, explicitly discuss the pros and cons of choices (e.g., Redis vs. ETS, Kafka vs. RabbitMQ). Emphasize that there are no perfect solutions, only solutions tailored to a given context.
+*   **STAR Structure:** For situational (behavioral) questions, structure your answers clearly: Situation, Task, Action (what YOU did, specifically), and Result (quantifiable metrics).
 
 ---
 
-## 📝 Tài liệu tra cứu cú pháp nhanh (Cheat Sheet)
-Nếu bạn nhớ hướng giải quyết (logic) nhưng hay quên các cú pháp Erlang/Elixir đặc thù (via tuples, `:ets`, `:erlang.send_after`), hãy mở nhanh tài liệu sau để tra cứu bộ khung xương mẫu:
-*   **[Cẩm nang Tra Cứu Cú Pháp Nhanh](exercises/syntax_cheat_sheet.md)**
+## 📝 Syntax Cheat Sheet
+If you understand the logic but need a quick reference for specific Erlang/Elixir syntax (e.g., via tuples, `:ets`, `:erlang.send_after`), check out our quick reference guide:
+*   **[Syntax Cheat Sheet](exercises/syntax_cheat_sheet.md)**

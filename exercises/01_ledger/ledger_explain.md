@@ -1,21 +1,21 @@
-# 💡 Giải Thích Bài Tập: Ledger Transaction (`Ecto.Multi`)
+# 💡 Exercise Explanation: Ledger Transaction (`Ecto.Multi`)
 
-## 1. Yêu Cầu Thực Tế & Thiết Kế
-Bài toán yêu cầu thực hiện giao dịch chuyển tiền giữa 2 tài khoản và ghi log. Trong các dự án tài chính (fintech), điều quan trọng nhất là tính **toàn vẹn dữ liệu (ACID)**. 
-Nếu trừ tiền tài khoản A thành công, nhưng cộng tiền cho B thất bại (ví dụ: tài khoản B bị khóa), tiền của A không được phép biến mất. Ngược lại, nếu ghi log lỗi, giao dịch chuyển tiền cũng phải được hủy.
+## 1. Real-world Requirements & Design
+The problem requires executing a money transfer transaction between 2 accounts and recording a log. In financial (fintech) projects, the most critical aspect is **data integrity (ACID)**. 
+If debiting account A succeeds, but crediting account B fails (for example, account B is locked), A's money must not disappear. Conversely, if writing the log fails, the transfer transaction must also be aborted.
 
-Do đó, chúng ta cần đóng gói toàn bộ quy trình này vào một **Database Transaction** sử dụng `Ecto.Multi`.
+Therefore, we need to encapsulate this entire process into a **Database Transaction** using `Ecto.Multi`.
 
 ---
 
-## 2. Giải Thích Code Triển Khai
+## 2. Implementation Code Explanation
 
 ```elixir
 def transfer_money(from_id, to_id, amount) do
-  # 1. Khởi tạo một Multi struct trống
+  # 1. Initialize an empty Multi struct
   Ecto.Multi.new()
   
-  # 2. Bước 1: Trừ tiền tài khoản gửi
+  # 2. Step 1: Debit the sender's account
   |> Ecto.Multi.run(:debit, fn repo, _changes ->
     case repo.get.(from_id) do
       nil -> {:error, "Sender account not found"}
@@ -23,7 +23,7 @@ def transfer_money(from_id, to_id, amount) do
         if sender.balance >= amount do
           new_balance = sender.balance - amount
           updated_state = repo.update_account.(from_id, new_balance)
-          # Trả về state mới của database (đã được cập nhật in-memory trong sandbox)
+          # Return the new database state (updated in-memory within the sandbox)
           {:ok, %{sender | balance: new_balance}, updated_state}
         else
           {:error, "Insufficient balance"}
@@ -31,7 +31,7 @@ def transfer_money(from_id, to_id, amount) do
     end
   end)
   
-  # 3. Bước 2: Cộng tiền tài khoản nhận
+  # 3. Step 2: Credit the receiver's account
   |> Ecto.Multi.run(:credit, fn repo, _changes ->
     case repo.get.(to_id) do
       nil -> {:error, "Receiver account not found"}
@@ -42,27 +42,27 @@ def transfer_money(from_id, to_id, amount) do
     end
   end)
   
-  # 4. Bước 3: Ghi transaction log
+  # 4. Step 3: Write transaction log
   |> Ecto.Multi.run(:log, fn repo, _changes ->
     {log, updated_state} = repo.insert_log.(from_id, to_id, amount)
     {:ok, log, updated_state}
   end)
   
-  # 5. Thực thi toàn bộ chuỗi transaction thông qua database connection
+  # 5. Execute the entire transaction chain via the database connection
   |> MockRepo.transaction()
 end
 ```
 
 ---
 
-## 3. Các Điểm Quan Trọng Dưới Góc Nhìn Kỹ Thuật
+## 3. Critical Technical Aspects
 
-### 3.1. Ecto.Multi.run Nhận Tham Số Gì?
-Mỗi hàm callback trong `Multi.run` nhận hai tham số: `fn repo, changes -> ... end`.
-*   `repo`: Là module kết nối Database. Trong môi trường thực tế, nó là `MyApp.Repo`. Việc sử dụng `repo` truyền trực tiếp này giúp Ecto thực thi truy vấn bên trong **Transaction Sandbox** (kết nối hiện tại đã được chiếm giữ bởi transaction). Nếu bạn gọi thẳng `MyApp.Repo.get` thay vì `repo.get`, bạn có thể đang đọc dữ liệu bên ngoài transaction, dẫn đến tình trạng đọc bẩn (dirty read) hoặc deadlock.
-*   `changes`: Là một Map chứa kết quả trả về của các bước trước đó. Ví dụ: ở bước `:credit`, `changes` sẽ là `%{debit: updated_sender_struct}`. Bạn có thể sử dụng dữ liệu này để đưa ra quyết định logic cho các bước sau.
+### 3.1. What parameters does Ecto.Multi.run receive?
+Each callback function in `Multi.run` receives two parameters: `fn repo, changes -> ... end`.
+*   `repo`: The Database connection module. In a real-world environment, it is `MyApp.Repo`. Passing `repo` directly like this allows Ecto to execute queries within the **Transaction Sandbox** (the current connection occupied by the transaction). If you call `MyApp.Repo.get` directly instead of `repo.get`, you might read data outside the transaction, leading to dirty reads or deadlocks.
+*   `changes`: A Map containing the return results of the previous steps. For example, at the `:credit` step, `changes` will be `%{debit: updated_sender_struct}`. You can use this data to make logical decisions for subsequent steps.
 
-### 3.2. Cơ Chế Hoạt Động Của Rollback Trong Sandbox
-*   Trong MockRepo, chúng ta giả lập transaction bằng cách lấy bản sao của database state (`original_state`).
-*   Khi chạy qua từng bước của Multi (`:debit` -> `:credit` -> `:log`), nếu có bất kỳ bước nào trả về `{:error, reason}`, quá trình duyệt (`Enum.reduce_while`) sẽ lập tức dừng lại (`{:halt, ...}`).
-*   MockRepo lúc này sẽ hủy bỏ (discard) toàn bộ state tạm thời đã cập nhật của các bước trước đó, không ghi đè vào database Agent chính thức và trả về lỗi. Điều này đảm bảo tính nguyên tử (Atomicity): hoặc tất cả thành công, hoặc không có gì thay đổi.
+### 3.2. How Rollback Works in the Sandbox
+*   In MockRepo, we simulate transactions by taking a copy of the database state (`original_state`).
+*   When running through each step of the Multi (`:debit` -> `:credit` -> `:log`), if any step returns `{:error, reason}`, the traversal (`Enum.reduce_while`) will immediately stop (`{:halt, ...}`).
+*   MockRepo will then discard all temporary states updated by the previous steps, without overwriting the official database Agent state, and return the error. This ensures Atomicity: either all succeed, or no changes are applied.

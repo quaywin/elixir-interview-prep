@@ -1,18 +1,18 @@
-# 💡 Giải Thích Bài Tập: Batch Processor (`GenServer` & `Timer` & `Cancellation`)
+# 💡 Exercise Explanation: Batch Processor (`GenServer` & `Timer` & `Cancellation`)
 
-## 1. Yêu Cầu Thực Tế & Thiết Kế
-Trong các hệ thống logging (như gửi telemetry metrics, ghi audit log, push data sang ElasticSearch), việc ghi từng bản ghi một xuống đĩa cứng hoặc gọi API bên ngoài cho mỗi request sẽ tạo ra lượng tải IOPS cực lớn và latency cao.
-Phương án tối ưu là **Batching (Gom nhóm)** dữ liệu: Gom đủ 100 items hoặc đợi tối đa 1 giây mới ghi một lần.
+## 1. Practical Requirements & Design
+In logging systems (such as sending telemetry metrics, writing audit logs, or pushing data to ElasticSearch), writing each individual record to disk or invoking an external API for every request would create a massive IOPS load and high latency.
+The optimal solution is **Batching**: collect up to 100 items or wait for a maximum of 1 second before writing them all at once.
 
-**Yêu cầu thiết kế:**
-*   Một GenServer `BatchProcessor` nhận các item và lưu tạm vào list `state.queue`.
-*   Nếu kích thước queue đạt tới `batch_size` -> Gọi callback ghi dữ liệu ngay lập tức.
-*   Nếu chưa đủ `batch_size` nhưng hết thời gian `timeout` -> Tự động kích hoạt flush lượng dữ liệu hiện có.
-*   **Điểm mấu chốt (Senior Level):** Nếu dữ liệu được flush sớm do gom đủ `batch_size` trước khi hết giờ, bắt buộc phải hủy timer cũ đi. Nếu không, khi timer cũ hết giờ, nó sẽ gửi tin nhắn flush lần hai, gây lỗi logic hoặc gửi các lô dữ liệu trống.
+**Design requirements:**
+*   A GenServer `BatchProcessor` receives items and temporarily stores them in the list `state.queue`.
+*   If the queue size reaches `batch_size` -> Call the write callback immediately.
+*   If the queue hasn't reached `batch_size` but the `timeout` expires -> Automatically trigger a flush of the current data.
+*   **Crucial Point (Senior Level):** If the data is flushed early because `batch_size` is reached before the timeout, the old timer must be cancelled. Otherwise, when that timer expires, it will send a second flush message, leading to logical errors or processing empty batches.
 
 ---
 
-## 2. Giải Thích Code Triển Khai
+## 2. Implementation Code Explanation
 
 ```elixir
 defmodule BatchProcessor do
@@ -25,18 +25,18 @@ defmodule BatchProcessor do
     new_queue = state.queue ++ [item]
 
     if length(new_queue) >= state.batch_size do
-      # ĐỦ BATCH SIZE: Flush ngay
-      # 1. Hủy bỏ timer hẹn giờ cũ (nếu có)
+      # BATCH SIZE REACHED: Flush immediately
+      # 1. Cancel the old timer (if any)
       cancel_timer(state.timer)
       
-      # 2. Xử lý dữ liệu
+      # 2. Process data
       state.callback.(new_queue)
       
-      # 3. Reset queue và timer
+      # 3. Reset the queue and timer
       {:reply, :ok, %{state | queue: [], timer: nil}}
     else
-      # CHƯA ĐỦ BATCH SIZE: Đợi thêm
-      # 4. Nếu chưa có timer nào chạy, khởi tạo timer mới
+      # BATCH SIZE NOT REACHED YET: Wait for more
+      # 4. If no timer is running, initialize a new one
       timer = if is_nil(state.timer) do
         :erlang.send_after(state.timeout, self(), :timeout_flush)
       else
@@ -49,7 +49,7 @@ defmodule BatchProcessor do
 
   @impl true
   def handle_call(:flush, _from, state) do
-    # CHỦ ĐỘNG FLUSH QUA API
+    # EXPLICIT FLUSH VIA API
     cancel_timer(state.timer)
     if length(state.queue) > 0 do
       state.callback.(state.queue)
@@ -59,14 +59,14 @@ defmodule BatchProcessor do
 
   @impl true
   def handle_info(:timeout_flush, state) do
-    # FLUSH DO HẾT GIỜ (TIMEOUT)
+    # FLUSH DUE TO TIMEOUT
     if length(state.queue) > 0 do
       state.callback.(state.queue)
     end
     {:noreply, %{state | queue: [], timer: nil}}
   end
 
-  # Helper hủy timer an toàn
+  # Helper to cancel a timer safely
   defp cancel_timer(nil), do: :ok
   defp cancel_timer(timer), do: :erlang.cancel_timer(timer)
 end
@@ -74,14 +74,14 @@ end
 
 ---
 
-## 3. Các Điểm Quan Trọng Dưới Góc Nhìn Kỹ Thuật
+## 3. Key Points from a Technical Perspective
 
-### 3.1. Hủy Timer An Toàn (`:erlang.cancel_timer/1`)
-*   Khi `:erlang.send_after/3` được gọi, nó trả về một kiểu dữ liệu tham chiếu (Reference).
-*   Nếu chúng ta không gọi `:erlang.cancel_timer(timer)`, tin nhắn `:timeout_flush` chắc chắn vẫn sẽ được đẩy vào mailbox của GenServer khi hết giờ.
-*   *Lưu ý về Race Condition:* Đôi khi, bạn gọi `cancel_timer(timer)` đúng lúc tin nhắn `:timeout_flush` vừa kịp bay vào Mailbox của GenServer trước đó một vài micro-giây. Để an toàn tuyệt đối, trong hàm `handle_info(:timeout_flush)`, chúng ta kiểm tra điều kiện `if length(state.queue) > 0`. Nếu queue đã được dọn sạch trước đó bởi một cú flush sớm, chúng ta chỉ việc bỏ qua không làm gì cả, tránh việc gửi batch rỗng tới callback.
+### 3.1. Safe Timer Cancellation (`:erlang.cancel_timer/1`)
+*   When `:erlang.send_after/3` is called, it returns a reference.
+*   If we do not call `:erlang.cancel_timer(timer)`, the `:timeout_flush` message will inevitably be pushed to the GenServer's mailbox when the timer expires.
+*   *Note on Race Conditions:* Sometimes, you call `cancel_timer(timer)` at the exact microsecond the `:timeout_flush` message has already arrived in the GenServer's mailbox. For absolute safety, in the `handle_info(:timeout_flush)` handler, we check the condition `if length(state.queue) > 0`. If the queue was already cleared by an early flush, we simply ignore it and do nothing, avoiding sending an empty batch to the callback.
 
-### 3.2. Hiệu Năng Phép Cộng List (`state.queue ++ [item]`)
-*   Trong lập trình hàm, cấu trúc List là Single Linked List. Phép toán `list ++ [item]` (thêm vào cuối) có độ phức tạp thuật toán là $O(N)$ vì nó phải duyệt qua toàn bộ các phần tử hiện tại để tạo ra list mới.
-*   Nếu `batch_size` lớn (ví dụ: 10,000 items), việc gọi liên tục `list ++ [item]` sẽ làm sụt giảm nghiêm trọng hiệu năng CPU do liên tục cấp phát lại vùng nhớ.
-*   *Giải pháp tối ưu hơn:* Thêm phần tử vào đầu list bằng toán tử cons: `new_queue = [item | state.queue]` có chi phí $O(1)$. Khi thực hiện flush, ta chỉ cần đảo ngược danh sách lại một lần duy nhất bằng hàm `:lists.reverse(new_queue)` (hoặc `Enum.reverse/1`) trước khi gửi sang callback.
+### 3.2. List Concatenation Performance (`state.queue ++ [item]`)
+*   In functional programming, lists are Singly Linked Lists. The `list ++ [item]` operation (appending to the end) has an $O(N)$ time complexity because it has to traverse the entire list to construct the new one.
+*   If the `batch_size` is large (e.g., 10,000 items), repeatedly calling `list ++ [item]` will severely degrade CPU performance due to continuous memory reallocation.
+*   *Optimal Solution:* Prepend items to the list using the cons operator: `new_queue = [item | state.queue]`, which runs in $O(1)$ time. When flushing, simply reverse the list once using `:lists.reverse(new_queue)` (or `Enum.reverse/1`) before passing it to the callback.

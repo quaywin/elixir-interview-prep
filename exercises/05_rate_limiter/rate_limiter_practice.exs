@@ -1,20 +1,20 @@
 # ==============================================================================
-# BÀI TẬP THỰC HÀNH NGÀY 2: GENSERVER RATE LIMITER
+# PRACTICAL EXERCISE DAY 2: GENSERVER RATE LIMITER
 # ==============================================================================
-# Đề bài: Xây dựng một GenServer tên là `RateLimiter` để giới hạn số lượng request
-# từ mỗi IP.
-# Yêu cầu:
-# 1. GenServer khởi chạy nhận tham số cấu hình:
-#    - `max_requests`: Số request tối đa được phép trong một chu kỳ (ví dụ: 5 request)
-#    - `interval`: Độ dài chu kỳ tính bằng mili-giây (ví dụ: 5000ms = 5 giây)
-# 2. Định nghĩa hàm API `request(ip)` gọi đồng bộ (handle_call) tới GenServer:
-#    - Trả về `{:ok, current_count}` nếu IP đó chưa vượt quá giới hạn.
-#    - Trả về `{:error, :rate_limited}` nếu IP đó đã vượt quá `max_requests`.
-# 3. Phải tự động reset số lượng request (clear counters) của mỗi IP sau khi hết `interval`.
-#    (Gợi ý: Dùng `:erlang.send_after/3` để gửi message định kỳ hoặc mỗi khi IP mới xuất hiện).
-# 4. Viết các test case trong ExUnit để xác thực giải pháp.
+# Objective: Build a GenServer named `RateLimiter` to rate-limit the number of requests
+# from each IP.
+# Requirements:
+# 1. The GenServer accepts configuration parameters upon startup:
+#    - `max_requests`: The maximum number of allowed requests in a cycle (e.g., 5 requests)
+#    - `interval`: The duration of the cycle in milliseconds (e.g., 5000ms = 5 seconds)
+# 2. Define the client API function `request(ip)` which makes a synchronous call (handle_call) to the GenServer:
+#    - Returns `{:ok, current_count}` if the IP has not exceeded the limit.
+#    - Returns `{:error, :rate_limited}` if the IP has exceeded `max_requests`.
+# 3. Must automatically reset the request counts (clear counters) for each IP after the `interval` has elapsed.
+#    (Hint: Use `:erlang.send_after/3` to send a message periodically or whenever a new IP appears).
+# 4. Write ExUnit test cases to validate your solution.
 #
-# Chạy file này bằng lệnh: elixir rate_limiter_practice.exs
+# Run this file with the command: elixir rate_limiter_practice.exs
 # ==============================================================================
 
 defmodule RateLimiter do
@@ -27,10 +27,10 @@ defmodule RateLimiter do
   end
 
   @doc """
-  Gửi một request từ IP cụ thể.
-  Trả về:
-  - `{:ok, current_count}` nếu được chấp nhận.
-  - `{:error, :rate_limited}` nếu vượt quá giới hạn.
+  Sends a request from a specific IP.
+  Returns:
+  - `{:ok, current_count}` if accepted.
+  - `{:error, :rate_limited}` if the limit is exceeded.
   """
   def request(ip) do
     GenServer.call(__MODULE__, {:request, ip})
@@ -62,7 +62,7 @@ defmodule RateLimiter do
       new_count = current_count + 1
       new_ips = Map.put(state.ips, ip, new_count)
 
-      # Nếu là request đầu tiên của IP này, thiết lập timer để reset IP
+      # If this is the first request from this IP, set up a timer to reset the IP
       if current_count == 0 do
         :erlang.send_after(state.interval, self(), {:reset_ip, ip})
       end
@@ -86,41 +86,41 @@ defmodule RateLimiterTest do
   @moduletag :capture_log
 
   setup do
-    # Khởi động RateLimiter với giới hạn 3 requests trong 200ms
+    # Start RateLimiter with a limit of 3 requests in 200ms
     start_supervised!({RateLimiter, max_requests: 3, interval: 200})
     :ok
   end
 
-  test "cho phép các request dưới hạn định" do
+  test "allows requests under the limit" do
     assert {:ok, 1} = RateLimiter.request("192.168.1.1")
     assert {:ok, 2} = RateLimiter.request("192.168.1.1")
     assert {:ok, 3} = RateLimiter.request("192.168.1.1")
   end
 
-  test "chặn request khi vượt quá giới hạn" do
+  test "blocks request when exceeding the limit" do
     assert {:ok, 1} = RateLimiter.request("192.168.1.2")
     assert {:ok, 2} = RateLimiter.request("192.168.1.2")
     assert {:ok, 3} = RateLimiter.request("192.168.1.2")
-    
-    # Request thứ 4 phải bị chặn
+
+    # The 4th request must be blocked
     assert {:error, :rate_limited} = RateLimiter.request("192.168.1.2")
   end
 
-  test "các IP khác nhau không ảnh hưởng tới hạn định của nhau" do
+  test "different IPs do not affect each other's limits" do
     assert {:ok, 1} = RateLimiter.request("192.168.1.3")
     assert {:ok, 1} = RateLimiter.request("10.0.0.1")
   end
 
-  test "tự động reset giới hạn sau khoảng thời gian interval" do
+  test "automatically resets limits after the interval duration" do
     assert {:ok, 1} = RateLimiter.request("192.168.1.4")
     assert {:ok, 2} = RateLimiter.request("192.168.1.4")
     assert {:ok, 3} = RateLimiter.request("192.168.1.4")
     assert {:error, :rate_limited} = RateLimiter.request("192.168.1.4")
 
-    # Đợi 250ms (interval là 200ms) để bộ đếm được reset
+    # Wait 250ms (interval is 200ms) for the counter to be reset
     Process.sleep(250)
 
-    # Gửi lại thành công sau khi reset
+    # Successfully send again after reset
     assert {:ok, 1} = RateLimiter.request("192.168.1.4")
   end
 end

@@ -1,28 +1,28 @@
 # ==============================================================================
-# BÀI TẬP THỰC HÀNH NGÀY 1 (NÂNG CAO 3): WRITE-THROUGH CACHE VỚI ETS & GENSERVER
+# PRACTICE EXERCISE DAY 1 (ADVANCED 3): WRITE-THROUGH CACHE WITH ETS & GENSERVER
 # ==============================================================================
-# Đề bài: Thiết kế một hệ thống Cache ghi-trực-tiếp (Write-Through Cache).
-# Khách hàng có thể đọc dữ liệu cực nhanh song song từ bảng ETS mà không bị bottleneck.
-# Nhưng các thao tác ghi dữ liệu bắt buộc phải gọi qua GenServer để đồng bộ
-# ghi xuống Database (DB) và cập nhật lại bảng ETS.
+# Problem: Design a Write-Through Cache system.
+# Clients can read data concurrently and extremely fast from the ETS table without bottlenecks.
+# But write operations must call through a GenServer to write to the Database (DB)
+# synchronously first, then update the ETS table.
 #
-# Yêu cầu:
-# 1. Hệ thống gồm:
-#    - Bảng ETS tên là `CacheTable` được khởi tạo dưới dạng `:set` và `:protected`.
-#      GenServer `CacheService` đóng vai trò là Owner của bảng ETS này.
-#    - Mẫu database giả lập bằng Agent (`MockDB`).
-# 2. Định nghĩa API client trong `CacheService`:
-#    - `read(key)`: ĐỌC TRỰC TIẾP từ bảng ETS `CacheTable` bằng `:ets.lookup/2`
-#      trong context của caller process. Hoàn toàn KHÔNG dùng `GenServer.call` để tránh bottleneck.
-#      Nếu cache hit -> trả về `{:ok, value}`.
-#      Nếu cache miss -> trả về `{:error, :not_found}` (không cần tự động load từ DB ở đây).
-#    - `write(key, value)`: GHI ĐỒNG BỘ bằng cách gửi `GenServer.call` tới `CacheService`.
-# 3. Khi nhận lệnh `write(key, value)`, `CacheService` GenServer sẽ:
-#    - Gọi ghi xuống DB giả lập (`MockDB.write(key, value)`).
-#    - Nếu DB ghi thành công -> cập nhật key-value vào bảng ETS `CacheTable`.
-#    - Trả về `:ok` cho caller.
+# Requirements:
+# 1. The system consists of:
+#    - An ETS table named `CacheTable` initialized as `:set` and `:protected`.
+#      The GenServer `CacheService` acts as the Owner of this ETS table.
+#    - A mock database simulated by an Agent (`MockDB`).
+# 2. Define the client API in `CacheService`:
+#    - `read(key)`: READ DIRECTLY from the ETS table `CacheTable` using `:ets.lookup/2`
+#      within the context of the caller process. Absolutely DO NOT use `GenServer.call` to avoid bottlenecks.
+#      If cache hit -> return `{:ok, value}`.
+#      If cache miss -> return `{:error, :not_found}` (no need to auto-load from the DB here).
+#    - `write(key, value)`: WRITE SYNCHRONOUSLY by sending `GenServer.call` to `CacheService`.
+# 3. When receiving a `write(key, value)` request, `CacheService` GenServer will:
+#    - Call the mock DB write (`MockDB.write(key, value)`).
+#    - If DB write succeeds -> update the key-value in the ETS table `CacheTable`.
+#    - Return `:ok` to the caller.
 #
-# Chạy file này bằng lệnh: elixir write_through_cache_practice.exs
+# Run this file with the command: elixir write_through_cache_practice.exs
 # ==============================================================================
 
 # --- MOCK DATABASE ---
@@ -42,7 +42,7 @@ defmodule MockDB do
   end
 
   def write(key, value) do
-    # Giả lập thời gian ghi DB thực tế (slow I/O)
+    # Simulate database write latency (slow I/O)
     Process.sleep(20)
     Agent.update(__MODULE__, fn state -> Map.put(state, key, value) end)
     :ok
@@ -62,16 +62,16 @@ defmodule CacheService do
   end
 
   @doc """
-  Đọc dữ liệu cực nhanh từ cache.
-  YÊU CẦU: Thao tác đọc phải chạy hoàn toàn đồng bộ trên caller process (ví dụ: HTTP Controller)
-  bằng cách gọi trực tiếp vào bảng ETS. Không gửi message tới GenServer.
+  Reads data extremely fast from the cache.
+  REQUIREMENT: Read operations must run fully synchronously on the caller process (e.g., HTTP Controller)
+  by directly calling the ETS table. Do not send messages to the GenServer.
   """
   def read(key) do
-    # Gọi :ets.lookup(@table_name, key)
-    # Định dạng dữ liệu lưu trong ETS là {key, value}
-    # Trả về:
-    # - `{:ok, value}` nếu tìm thấy.
-    # - `{:error, :not_found}` nếu không tìm thấy.
+    # Call :ets.lookup(@table_name, key)
+    # Data format in ETS is {key, value}
+    # Returns:
+    # - `{:ok, value}` if found.
+    # - `{:error, :not_found}` if not found.
     case :ets.lookup(@table_name, key) do
       [{^key, value}] -> {:ok, value}
       [] -> {:error, :not_found}
@@ -79,8 +79,8 @@ defmodule CacheService do
   end
 
   @doc """
-  Ghi dữ liệu đồng bộ.
-  YÊU CẦU: Giao dịch ghi phải đi qua GenServer để ghi xuống DB trước rồi mới cập nhật cache.
+  Writes data synchronously.
+  REQUIREMENT: Write operations must go through the GenServer to write to the DB first, then update the cache.
   """
   def write(key, value) do
     GenServer.call(__MODULE__, {:write, key, value})
@@ -90,10 +90,10 @@ defmodule CacheService do
 
   @impl true
   def init(_opts) do
-    # Khởi tạo bảng ETS
-    # YÊU CẦU: :set, :protected, :named_table (để dùng atom làm tên bảng)
-    # :protected nghĩa là chỉ Owner process (GenServer này) được quyền ghi (write),
-    # nhưng bất kỳ process nào khác cũng có quyền đọc (read).
+    # Initialize ETS table
+    # REQUIREMENT: :set, :protected, :named_table (to use atom as table name)
+    # :protected means only the Owner process (this GenServer) has write permissions,
+    # but any other process can read.
     :ets.new(@table_name, [:set, :protected, :named_table])
 
     {:ok, %{}}
@@ -101,13 +101,14 @@ defmodule CacheService do
 
   @impl true
   def handle_call({:write, key, value}, _from, state) do
-    # 1. Ghi xuống Database giả lập
+    # 1. Write to mock Database
     case MockDB.write(key, value) do
       :ok ->
-        # 2. Nếu ghi DB thành công, cập nhật vào ETS cache table
-        # Định dạng lưu là tuple {key, value}
+        # 2. If DB write succeeds, update the ETS cache table
+        # Format stored is a tuple {key, value}
         :ets.insert(@table_name, {key, value})
         {:reply, :ok, state}
+
       _error ->
         {:reply, {:error, :db_write_failed}, state}
     end
@@ -122,45 +123,46 @@ defmodule WriteThroughCacheTest do
   @moduletag :capture_log
 
   setup do
-    # Khởi chạy Database giả lập với tham số map rỗng
+    # Start mock Database with an empty map
     start_supervised!({MockDB, %{}})
-    # Khởi chạy Cache Service
+    # Start Cache Service
     start_supervised!(CacheService)
     :ok
   end
 
-  test "đọc ghi dữ liệu đồng bộ và cập nhật cache thành công" do
-    # Mới khởi tạo, cache phải rỗng
+  test "successfully reads/writes data synchronously and updates cache" do
+    # Newly initialized, cache must be empty
     assert {:error, :not_found} = CacheService.read("username")
 
-    # Ghi dữ liệu thông qua Cache Service
+    # Write data through Cache Service
     assert :ok = CacheService.write("username", "alice")
 
-    # Đọc trực tiếp từ Cache (đọc nhanh từ ETS)
+    # Read directly from Cache (fast read from ETS)
     assert {:ok, "alice"} = CacheService.read("username")
 
-    # Dữ liệu phải được lưu xuống cả Database thực tế
+    # Data must also be stored in the actual Database
     assert MockDB.read("username") == "alice"
   end
 
-  test "các process khác nhau có thể đọc song song trực tiếp từ ETS" do
-    # Ghi dữ liệu
+  test "different processes can read concurrently directly from ETS" do
+    # Write data
     assert :ok = CacheService.write("session_token", "jwt_123456")
 
-    # Spawn một process con độc lập và đọc cache từ process đó
-    task = Task.async(fn ->
-      CacheService.read("session_token")
-    end)
+    # Spawn an independent child process and read the cache from it
+    task =
+      Task.async(fn ->
+        CacheService.read("session_token")
+      end)
 
-    # Đảm bảo đọc thành công từ process con (nhờ cấu hình :protected của ETS)
+    # Ensure successful read from child process (thanks to ETS :protected configuration)
     assert {:ok, "jwt_123456"} = Task.await(task)
   end
 
-  test "đọc cache thất bại (cache miss) không tự động sửa DB" do
-    # Ghi trực tiếp xuống DB, bypass qua Cache Service
+  test "cache miss does not automatically fetch from DB" do
+    # Write directly to DB, bypassing Cache Service
     MockDB.write("bypass_key", "db_value")
 
-    # Đọc từ cache service phải báo lỗi cache miss (vì không được ghi qua service)
+    # Reading from cache service must return a cache miss (since it was not written through the service)
     assert {:error, :not_found} = CacheService.read("bypass_key")
   end
 end

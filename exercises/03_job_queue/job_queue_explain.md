@@ -1,46 +1,46 @@
-# 💡 Giải Thích Bài Tập: Concurrent Job Queue (`Task.Supervisor` & `Monitor`)
+# 💡 Exercise Explanation: Concurrent Job Queue (`Task.Supervisor` & `Monitor`)
 
-## 1. Yêu Cầu Thực Tế & Thiết Kế
-Trong các hệ thống lớn, chúng ta thường cần xử lý các tác vụ nền song song (gọi API của bên thứ ba, nén ảnh, xử lý dữ liệu) nhưng phải giới hạn số lượng công việc chạy đồng thời (`max_concurrency`). 
-Nếu không giới hạn, việc spawn hàng triệu process đồng loạt sẽ làm quá tải RAM hoặc làm nghẽn kết nối mạng và cơ sở dữ liệu.
+## 1. Real-world Requirements & Design
+In large systems, we often need to process background tasks concurrently (calling third-party APIs, compressing images, processing data) but must limit the number of jobs running concurrently (`max_concurrency`). 
+Without a limit, spawning millions of processes simultaneously would overload RAM or bottleneck network connections and databases.
 
-Chúng ta cần xây dựng một GenServer đóng vai trò điều phối (`JobQueue`):
-1.  Lưu trữ danh sách các công việc chờ xử lý trong cấu trúc dữ liệu hàng đợi.
-2.  Theo dõi số lượng worker đang hoạt động.
-3.  Khi một worker hoàn thành xong hoặc bị lỗi, GenServer phải lập tức nhận biết để kéo thêm công việc mới ra chạy tiếp.
+We need to build a coordinating GenServer (`JobQueue`):
+1. Store the list of pending jobs in a queue data structure.
+2. Monitor the number of active workers.
+3. When a worker completes its task or fails, the GenServer must immediately detect it to retrieve and execute a new job from the queue.
 
 ---
 
-## 2. Giải Thích Code Triển Khai
+## 2. Implementation Code Explanation
 
-### 2.1. Cấu Trúc FIFO Queue của Erlang
-Thay vì sử dụng List của Elixir (vì List trong Elixir là Linked List, việc lấy phần tử ở cuối hoặc thêm vào cuối tốn chi phí $O(N)$), chúng ta sử dụng module Erlang `:queue`.
-*   `:queue.new()`: Khởi tạo hàng đợi trống.
-*   `:queue.in(item, queue)`: Thêm một phần tử vào cuối hàng đợi (chi phí $O(1)$).
-*   `:queue.out(queue)`: Lấy một phần tử ở đầu hàng đợi ra (chi phí $O(1)$).
+### 2.1. Erlang's FIFO Queue Structure
+Instead of using Elixir's List (since Elixir lists are Singly Linked Lists, appending to or retrieving from the end incurs a cost of $O(N)$), we utilize Erlang's `:queue` module.
+*   `:queue.new()`: Initializes an empty queue.
+*   `:queue.in(item, queue)`: Appends an item to the tail of the queue ($O(1)$ complexity).
+*   `:queue.out(queue)`: Retrieves an item from the head of the queue ($O(1)$ complexity).
 
-### 2.2. Khởi Chạy Tác Vụ Bất Đồng Bộ Với `async_nolink`
+### 2.2. Starting Asynchronous Tasks with `async_nolink`
 ```elixir
 task = Task.Supervisor.async_nolink(JobQueueSupervisor, job_fun)
 ```
-*   **Tại sao dùng `async_nolink`?** Nếu dùng `Task.Supervisor.async/2`, nó sẽ liên kết (link) hai process lại với nhau. Nếu worker task bị crash đột ngột (lỗi cú pháp, API timeout), nó sẽ kéo sập luôn cả GenServer `JobQueue` trung tâm. Dùng `async_nolink` giúp cô lập lỗi: worker crash thì mặc kệ nó, GenServer chính vẫn sống bình thường.
-*   **Monitor hoạt động thế nào?** Hàm `async_nolink` tự động thiết lập một `monitor` từ GenServer tới task process mới tạo và trả về một `%Task{ref: ref}`. Khi task process này kết thúc hoặc bị crash, BEAM VM sẽ tự động gửi một message có định dạng `:DOWN` vào mailbox của GenServer.
+*   **Why use `async_nolink`?** If we use `Task.Supervisor.async/2`, it links the two processes together. If a worker task crashes unexpectedly (syntax error, API timeout), it will also bring down the central `JobQueue` GenServer. Using `async_nolink` helps isolate failures: if a worker crashes, the main GenServer remains alive.
+*   **How does the Monitor work?** The `async_nolink` function automatically establishes a `monitor` from the GenServer to the newly created task process and returns a `%Task{ref: ref}`. When this task process terminates or crashes, the BEAM VM automatically sends a `:DOWN` formatted message to the GenServer's mailbox.
 
-### 2.3. Xử Lý Tin Nhắn Trạng Thái Của Task
+### 2.3. Handling Task Status Messages
 
 ```elixir
-# 1. Khi Task hoàn thành thành công
+# 1. When the Task completes successfully
 def handle_info({ref, _result}, state) do
-  # Tắt monitor liên kết với ref này để tránh nhận message :DOWN thừa
+  # Stop monitoring this ref to avoid receiving redundant :DOWN messages
   Process.demonitor(ref, [:flush])
   
-  # Dọn dẹp danh sách đang chạy và chạy tiếp job mới
+  # Clean up the running list and execute the next job
   new_running = Map.delete(state.running_jobs, ref)
   final_state = process_queue(%{state | running_jobs: new_running})
   {:noreply, final_state}
 end
 
-# 2. Khi Task bị crash hoặc bị tắt đột ngột
+# 2. When the Task crashes or terminates abruptly
 def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
   new_running = Map.delete(state.running_jobs, ref)
   final_state = process_queue(%{state | running_jobs: new_running})
@@ -48,31 +48,31 @@ def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
 end
 ```
 
-*   **Tại sao cần `Process.demonitor(ref, [:flush])`?** Khi task hoàn thành bình thường, nó gửi kết quả `{ref, result}`. Do ta đã monitor nó, sau khi gửi kết quả nó sẽ tắt đi, dẫn đến một tin nhắn `:DOWN` tiếp tục được gửi vào mailbox của GenServer. Gọi `Process.demonitor` kèm tùy chọn `[:flush]` giúp hủy theo dõi và dọn sạch tin nhắn `:DOWN` thừa này khỏi mailbox ngay lập tức.
+*   **Why is `Process.demonitor(ref, [:flush])` needed?** When a task completes normally, it sends the `{ref, result}` message. Since we are monitoring it, once it outputs its result and stops, a `:DOWN` message will still be delivered to the GenServer's mailbox. Calling `Process.demonitor` with the `[:flush]` option cancels the monitoring and immediately flushes any redundant `:DOWN` message out of the mailbox.
 
 ---
 
-## 3. Bản Chất Cơ Học Luồng Điều Phối
+## 3. Core Mechanics of the Coordination Flow
 ```
-[Client] ---> Gọi JobQueue.enqueue(job)
+[Client] ---> Call JobQueue.enqueue(job)
                   |
                   v
-       Ghi nhận vào :queue.in
+       Record to :queue.in
                   |
                   v
-       Gọi process_queue()
+       Call process_queue()
                   |
-        +---------+---------+ (Số job đang chạy < max_concurrency?)
+        +---------+---------+ (Number of running jobs < max_concurrency?)
         | YES               | NO
         v                   v
- Spawn Task worker       Chờ trong queue
- Thiết lập monitor
+ Spawn Task worker       Wait in queue
+ Set up monitor
         |
         v
- Worker hoàn thành / crash
+ Worker completes / crashes
         |
         v
- Gửi message {:DOWN, ref} tới JobQueue
+ Send {:DOWN, ref} message to JobQueue
         v
- Xử lý giải phóng slot -> Gọi lại process_queue() để kéo job tiếp theo
+ Release slot -> Call process_queue() to pull the next job
 ```

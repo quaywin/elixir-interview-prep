@@ -1,63 +1,63 @@
-# 💡 Cẩm Nang Thuật Toán Trong Lập Trình Hàm (Elixir Algorithms Cookbook)
+# 💡 Elixir Algorithms Cookbook
 
-Đối với các lập trình viên chuyển từ OOP (như Java, Python, Go) sang Elixir, sai lầm lớn nhất khi viết thuật toán là cố gắng áp dụng tư duy "vòng lặp thay đổi trạng thái" (imperative mutations). 
+For developers transitioning from OOP (such as Java, Python, Go) to Elixir, the biggest mistake when writing algorithms is attempting to apply "state-mutating loops" (imperative mutations). 
 
-Tài liệu này tổng hợp các **mẹo cốt lõi (tricks)** và **mô hình tư duy lập trình hàm (functional patterns)** giúp bạn giải quyết các bài toán thuật toán tối ưu nhất trong Elixir.
-
----
-
-## 1. Mẹo Cấu Trúc Dữ Liệu: Linked List vs Map
-
-### 1.1. Quy tắc Vàng về List trong Elixir
-Trong Elixir, List (`[1, 2, 3]`) được tổ chức dưới dạng **Single Linked List**. Mỗi phần tử là một "cons cell" chứa giá trị của nó và con trỏ trỏ tới phần tử tiếp theo.
-
-*   **Không bao giờ append (`list ++ [item]`) trong vòng lặp hoặc đệ quy!**
-    *   *Tại sao:* Để nối một phần tử vào cuối list dài $N$, BEAM VM bắt buộc phải duyệt từ đầu đến cuối list và copy lại toàn bộ $N$ cons cell cũ. Độ phức tạp là **$O(N)$**. Nếu lặp $N$ lần, tổng chi phí sẽ là **$O(N^2)$** -> Tệ hại.
-    *   *Mẹo:* Luôn luôn thêm vào đầu list (prepend) bằng cú pháp cons `[item | list]` có chi phí **$O(1)$**. Khi hoàn thành việc thu thập kết quả, gọi `Enum.reverse/1` duy nhất một lần (chi phí $O(N)$). Tổng chi phí tối ưu là **$O(N)$**.
-*   **Không truy cập phần tử theo index trong List (`Enum.at(list, index)`)**
-    *   *Tại sao:* Linked list không hỗ trợ random access. Để lấy phần tử thứ $i$, BEAM phải đi qua $i$ phần tử từ đầu list (chi phí $O(N)$).
-    *   *Mẹo:* Nếu bài toán yêu cầu truy cập ngẫu nhiên liên tục theo index (như đồ thị, mảng nhảy), hãy convert list sang **Map** `{index => value}` hoặc **Tuple** (Tuple hỗ trợ random access $O(1)$ nhưng chi phí tạo mới/thay đổi tuple rất đắt vì phải copy toàn bộ tuple).
-
-### 1.2. Sử dụng Map làm Hash Table ($O(1)$ Lookup)
-Khi giải bài toán như Two Sum, Group Anagrams, bạn cần tra cứu dữ liệu cực nhanh.
-*   **Map** trong Elixir sử dụng cấu trúc **HAMT (Hash Array Mapped Trie)** dưới nền tảng.
-*   Tra cứu khóa `Map.get(map, key)` hoặc cập nhật `Map.put(map, key, value)` có độ phức tạp gần như là **$O(1)$** (chính xác là $O(\log N)$ với cơ số rất lớn, hoạt động cực kỳ nhanh).
+This document compiles the **core tricks** and **functional programming patterns** that will help you solve algorithmic problems optimally in Elixir.
 
 ---
 
-## 2. Mẹo Đệ Quy: Body Recursion vs Tail Call Optimization (TCO)
+## 1. Data Structure Tricks: Linked List vs Map
 
-Interviewer sẽ đánh giá bạn ở mức Junior hay Senior dựa trên việc bạn thiết kế hàm đệ quy.
+### 1.1. The Golden Rule of Lists in Elixir
+In Elixir, a List (`[1, 2, 3]`) is structured as a **Singly Linked List**. Each element is a "cons cell" containing its value and a pointer to the next element.
 
-### 2.1. Đệ quy thân (Body Recursion)
-Hàm đệ quy gọi chính nó và giữ lại một phép tính (ví dụ: cộng, nhân) ở cuối.
+*   **Never append (`list ++ [item]`) in a loop or recursion!**
+    *   *Why:* To append an element to the end of a list of length $N$, the BEAM VM must traverse the list from beginning to end and copy all $N$ original cons cells. This has a complexity of **$O(N)$**. Doing this in a loop of $N$ iterations results in a total cost of **$O(N^2)$** -> Terrible performance.
+    *   *Trick:* Always prepend to the head of the list using the cons syntax `[item | list]`, which has a cost of **$O(1)$**. Once the collection is complete, call `Enum.reverse/1` exactly once (cost is $O(N)$). The overall optimal complexity is **$O(N)$**.
+*   **Do not access list elements by index (`Enum.at(list, index)`)**
+    *   *Why:* Singly linked lists do not support random access. To get the $i$-th element, the BEAM must traverse $i$ elements from the start of the list (cost is $O(N)$).
+    *   *Trick:* If the problem requires frequent random access by index (such as graphs or jump arrays), convert the list to a **Map** `{index => value}` or a **Tuple** (Tuples support $O(1)$ random access, but creating or modifying a tuple is expensive as it requires copying the entire tuple).
+
+### 1.2. Using Map as a Hash Table ($O(1)$ Lookup)
+When solving problems like Two Sum or Group Anagrams, you need extremely fast data lookup.
+*   Under the hood, **Maps** in Elixir use a **HAMT (Hash Array Mapped Trie)** structure.
+*   Looking up a key `Map.get(map, key)` or updating `Map.put(map, key, value)` has a complexity close to **$O(1)$** (strictly speaking, it is $O(\log N)$ with a very large branching factor, making it extremely fast).
+
+---
+
+## 2. Recursion Tricks: Body Recursion vs Tail Call Optimization (TCO)
+
+Interviewers will evaluate whether you are at a Junior or Senior level based on how you design recursive functions.
+
+### 2.1. Body Recursion
+A recursive function that calls itself and leaves a pending operation (e.g., addition, multiplication) at the end.
 ```elixir
 def sum([]), do: 0
-def sum([head | tail]), do: head + sum(tail)  # Giữ lại phép cộng "+"
+def sum([head | tail]), do: head + sum(tail)  # Pending addition "+"
 ```
-*   *Hạn chế:* BEAM VM phải lưu trữ mỗi lượt gọi hàm vào Stack Memory để đợi kết quả trả về từ lượt đệ quy tiếp theo rồi mới thực hiện phép cộng. Nếu List có 1,000,000 phần tử, stack sẽ bị phình to 1,000,000 frame -> Dễ gây lỗi **Stack Overflow**.
+*   *Limitation:* The BEAM VM must store each function call in Stack Memory to await the result from the next recursive step before performing the addition. If the list has 1,000,000 elements, the stack will bloat to 1,000,000 frames -> Easily causing a **Stack Overflow** error.
 
-### 2.2. Đệ quy đuôi (Tail Recursion) kết hợp Accumulator
-Lượt gọi cuối cùng của hàm là gọi chính nó và chuyển trạng thái tích lũy qua biến nhận (accumulator).
+### 2.2. Tail Recursion with an Accumulator
+The final call of the function is to call itself, passing the accumulated state through an accumulator variable.
 ```elixir
 def sum(list), do: do_sum(list, 0)
 
-# Hàm trợ giúp (Helper) thực thi đệ quy đuôi
+# Helper function implementing tail recursion
 defp do_sum([], acc), do: acc
-defp do_sum([head | tail], acc), do: do_sum(tail, acc + head) # Lời gọi cuối cùng là gọi chính nó
+defp do_sum([head | tail], acc), do: do_sum(tail, acc + head) # The last call is the function invoking itself
 ```
-*   *Cơ chế tối ưu:* BEAM VM nhận thấy không còn phép tính nào cần chờ xử lý sau lời gọi đệ quy. Nó sẽ **tái sử dụng trực tiếp khung stack hiện tại (Tail Call Optimization - TCO)** và ghi đè các tham số mới. Việc này giúp đệ quy tiêu tốn lượng bộ nhớ Stack cố định là **$O(1)$**, an toàn tuyệt đối với mọi kích thước dữ liệu.
+*   *Optimization Mechanism:* The BEAM VM detects that there are no pending operations awaiting completion after the recursive call. It will **directly reuse the current stack frame (Tail Call Optimization - TCO)** and overwrite it with the new arguments. This keeps stack memory consumption constant at **$O(1)$**, making it completely safe for any data size.
 
 ---
 
-## 3. Mẹo Pattern Matching trên Mảng & Chuỗi (Bi-Matching)
+## 3. Pattern Matching Tricks on Lists & Strings (Binary Matching)
 
-Một thế mạnh vượt trội của Elixir là khả năng pattern matching sâu trên cấu trúc nhị phân (binary/string).
+One of Elixir's greatest strengths is its ability to perform deep pattern matching on binary and string structures.
 
-### 3.1. Pattern matching trên List
-Không viết code kiểm tra list rỗng hay lấy phần tử đầu bằng if/else:
+### 3.1. Pattern Matching on Lists
+Do not write code that checks if a list is empty or grabs the head using if/else:
 ```elixir
-# Viết code xấu (Imperative)
+# Poor code style (Imperative)
 def process(list) do
   if length(list) == 0 do
     :empty
@@ -68,69 +68,69 @@ def process(list) do
   end
 end
 
-# Viết code chuẩn Elixir (Functional)
+# Standard Elixir style (Functional)
 def process([]), do: :empty
 def process([head | tail]) do
-  # logic trực tiếp với head và tail...
+  # logic directly using head and tail...
 end
 ```
 
-### 3.2. Đọc byte/chuỗi nhanh với Binary Pattern Matching
-Nếu bài toán yêu cầu xử lý chuỗi (ví dụ: parse định dạng file, kiểm tra chuỗi đối xứng), bạn có thể matching trực tiếp byte/bit:
+### 3.2. Fast Byte/String Reading with Binary Pattern Matching
+If the problem requires string processing (e.g., parsing file formats, checking palindromes), you can match bytes/bits directly:
 ```elixir
-# Lấy ký tự đầu tiên dạng UTF-8 của chuỗi
+# Extract the first UTF-8 character of the string
 def parse_string(<<first_char::utf8, rest::binary>>) do
-  IO.puts("Ký tự đầu: #{first_char}")
+  IO.puts("First char: #{first_char}")
   parse_string(rest)
 end
 def parse_string(<<>>), do: :ok
 ```
-*   *Mẹo:* Binary matching của BEAM VM được tối ưu trực tiếp bằng mã C bên dưới, chạy nhanh gấp nhiều lần so với việc dùng `String.split/2` hayRegex để duyệt chuỗi.
+*   *Trick:* Binary matching in the BEAM VM is optimized directly in underlying C code, running many times faster than using `String.split/2` or Regex to traverse strings.
 
 ---
 
-## 4. Các Hàm Enum Cực Kỳ Quan Trọng Cần Ghi Nhớ
+## 4. Essential Enum Functions to Remember
 
-Hãy thuộc lòng các hàm sau để giải quyết nhanh các bài toán mà không cần tự viết đệ quy:
+Memorize the following functions to quickly solve problems without having to write recursion yourself:
 
 1.  **`Enum.reduce(enumerable, acc, fun)`**:
-    *   Hàm vạn năng để biến đổi một danh sách thành một giá trị duy nhất (số, map, list khác).
+    *   A versatile function to transform an enumerable into a single value (number, map, or another list).
 2.  **`Enum.map_reduce(enumerable, acc, fun)`**:
-    *   Vừa biến đổi từng phần tử (map), vừa duy trì một trạng thái tích lũy (reduce) đi kèm. Rất hữu ích khi giải bài toán dạng: tính tổng tích lũy tại từng vị trí index.
+    *   Transforms each element (map) while maintaining an accumulated state (reduce). Very useful for problems like calculating a running sum at each index.
 3.  **`Enum.chunk_by(enumerable, fun)`**:
-    *   Gom nhóm các phần tử liên tiếp thỏa mãn chung một điều kiện.
-4.  **`Enum.uniq(enumerable)`** hoặc **`MapSet`**:
-    *   Khi cần lọc trùng dữ liệu. Để kiểm tra sự tồn tại trong $O(1)$, hãy đẩy dữ liệu vào `MapSet` bằng `MapSet.new/1`.
+    *   Groups consecutive elements that satisfy a common condition.
+4.  **`Enum.uniq(enumerable)`** or **`MapSet`**:
+    *   Used to filter duplicate data. For $O(1)$ membership checks, populate a `MapSet` using `MapSet.new/1`.
 
 ---
 
-## 5. Mẫu Giải Bài Toán Thuật Toán Kinh Điển (Two Sum)
+## 5. Classic Algorithm Problem Template (Two Sum)
 
-*   **Đề bài:** Cho mảng số nguyên `nums` và số nguyên `target`, tìm index của 2 số trong mảng có tổng bằng `target`.
-*   **Giải pháp FP tối ưu:** Duyệt mảng, dùng một Map làm Hash Table lưu trữ `{number => index}` của các số đã đi qua. Với mỗi số `x`, kiểm tra xem `target - x` đã tồn tại trong Map chưa.
+*   **Problem:** Given an array of integers `nums` and an integer `target`, return the indices of the two numbers such that they add up to `target`.
+*   **Optimal FP Solution:** Traverse the array using a Map as a Hash Table to store `{number => index}` of visited numbers. For each number `x`, check if `target - x` already exists in the Map.
 
 ```elixir
 defmodule TwoSum do
   def solve(nums, target) do
-    # Convert list sang dạng có kèm index: [{val, idx}]
+    # Convert list to include indices: [{val, idx}]
     nums
     |> Enum.with_index()
-    # Tìm kiếm sử dụng reduce_while (cho phép dừng sớm khi tìm thấy kết quả)
+    # Search using reduce_while (allows early halt when the result is found)
     |> Enum.reduce_while(%{}, fn {val, idx}, seen ->
       complement = target - val
       
       case Map.fetch(seen, complement) do
         {:ok, prev_idx} ->
-          # Tìm thấy cặp số thỏa mãn, dừng vòng lặp và trả về index
+          # Found the matching pair, halt the loop and return indices
           {:halt, {prev_idx, idx}}
         :error ->
-          # Chưa tìm thấy, lưu số hiện tại vào map seen và đi tiếp
+          # Not found yet, store the current number in the seen map and continue
           {:cont, Map.put(seen, val, idx)}
       end
     end)
   end
 end
 ```
-*   *Độ phức tạp thuật toán:*
-    *   Thời gian: **$O(N)$** (chỉ duyệt mảng 1 lần, tìm kiếm trong Map mất $O(1)$).
-    *   Không gian: **$O(N)$** (dùng Map lưu trữ tối đa $N$ phần tử đã đi qua).
+*   *Algorithm Complexity:*
+    *   Time: **$O(N)$** (traverses the array only once; Map lookups take $O(1)$).
+    *   Space: **$O(N)$** (uses a Map to store up to $N$ visited elements).

@@ -1,23 +1,23 @@
 # ==============================================================================
-# BÀI TẬP THỰC HÀNH NGÀY 1 (NÂNG CAO 2): CONCURRENT JOB QUEUE
+# PRACTICE EXERCISE DAY 1 (ADVANCED 2): CONCURRENT JOB QUEUE
 # ==============================================================================
-# Đề bài: Xây dựng một GenServer tên là `JobQueue` dùng để quản lý việc thực thi
-# các công việc bất đồng bộ (jobs) với giới hạn số lượng công việc chạy đồng thời
-# tối đa (max concurrency).
+# Problem: Build a GenServer named `JobQueue` to manage the execution of
+# asynchronous tasks (jobs) with a limit on the maximum number of concurrent runs
+# (max concurrency).
 #
-# Yêu cầu:
-# 1. GenServer khởi chạy nhận tham số cấu hình:
-#    - `max_concurrency`: Số lượng job tối đa được phép chạy đồng thời (ví dụ: 2 jobs).
-# 2. Định nghĩa API client:
-#    - `enqueue(job_fun)`: Thêm một job (dưới dạng một anonymous function) vào hàng đợi.
-# 3. Khi có chỗ trống (số lượng job đang chạy < max_concurrency) và hàng đợi không trống,
-#    GenServer phải lập tức lấy job ra và khởi chạy nó một cách bất đồng bộ sử dụng
-#    `Task.Supervisor.async_nolink/2` (giám sát thông tin qua monitor).
-# 4. Khi một job hoàn thành hoặc bị crash, GenServer phải nhận được message
-#    từ Task (trong handle_info), giảm số lượng job đang chạy, và tự động kéo thêm
-#    job mới từ hàng đợi ra chạy tiếp (nếu có).
+# Requirements:
+# 1. GenServer accepts configuration options upon startup:
+#    - `max_concurrency`: Maximum number of jobs allowed to run concurrently (e.g., 2 jobs).
+# 2. Define the client API:
+#    - `enqueue(job_fun)`: Add a job (as an anonymous function) to the queue.
+# 3. When there is an available slot (number of running jobs < max_concurrency) and the queue is not empty,
+#    the GenServer must immediately pull a job and run it asynchronously using
+#    `Task.Supervisor.async_nolink/2` (monitored via process monitor).
+# 4. When a job completes or crashes, the GenServer must receive a message
+#    from the Task (in handle_info), decrement the running job count, and automatically
+#    pull the next job from the queue to run (if any).
 #
-# Chạy file này bằng lệnh: elixir job_queue_practice.exs
+# Run this file with the command: elixir job_queue_practice.exs
 # ==============================================================================
 
 defmodule JobQueue do
@@ -30,7 +30,7 @@ defmodule JobQueue do
   end
 
   @doc """
-  Thêm một job vào hàng đợi xử lý.
+  Adds a job to the processing queue.
   """
   def enqueue(job_fun) do
     GenServer.call(__MODULE__, {:enqueue, job_fun})
@@ -44,8 +44,10 @@ defmodule JobQueue do
 
     state = %{
       max_concurrency: max_concurrency,
-      queue: :queue.new(),       # Sử dụng :queue module Erlang để tối ưu cấu trúc FIFO
-      running_jobs: %{}          # Map để map Task ref => job_ref
+      # Use Erlang's :queue module to optimize the FIFO structure
+      queue: :queue.new(),
+      # Map to map Task ref => job_ref
+      running_jobs: %{}
     }
 
     {:ok, state}
@@ -53,71 +55,71 @@ defmodule JobQueue do
 
   @impl true
   def handle_call({:enqueue, job_fun}, _from, state) do
-    # Đưa job vào hàng đợi FIFO
+    # Enqueue the job into the FIFO queue
     new_queue = :queue.in(job_fun, state.queue)
     new_state = %{state | queue: new_queue}
-    
-    # Kích hoạt hàm kiểm tra và khởi chạy job nếu còn slot trống
+
+    # Trigger the check and start jobs if there are available slots
     final_state = process_queue(new_state)
 
     {:reply, :ok, final_state}
   end
 
-  # Xử lý tin nhắn từ Task.async_nolink trả về khi hoàn thành thành công
-  # Định dạng message: {ref, result}
+  # Handle messages returned from Task.async_nolink on successful completion
+  # Message format: {ref, result}
   @impl true
   def handle_info({ref, _result}, state) do
-    # Tắt monitor liên kết với task ref này
+    # Stop monitoring this task ref
     Process.demonitor(ref, [:flush])
-    
-    # Xóa task khỏi danh sách đang chạy
+
+    # Remove the task from the running list
     new_running = Map.delete(state.running_jobs, ref)
     new_state = %{state | running_jobs: new_running}
-    
-    # Kiểm tra để chạy job tiếp theo trong queue
+
+    # Check and run the next job in the queue
     final_state = process_queue(new_state)
-    
+
     {:noreply, final_state}
   end
 
-  # Xử lý tin nhắn khi Task worker bị crash hoặc hoàn thành xong
-  # Định dạng message: {:DOWN, ref, :process, _pid, reason}
+  # Handle messages when a Task worker crashes or exits
+  # Message format: {:DOWN, ref, :process, _pid, reason}
   @impl true
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
-    # Xóa task khỏi danh sách đang chạy (trong trường hợp crash hoặc hoàn thành)
+    # Remove the task from the running list (in case of crash or termination)
     new_running = Map.delete(state.running_jobs, ref)
     new_state = %{state | running_jobs: new_running}
-    
-    # Kiểm tra để chạy job tiếp theo trong queue
+
+    # Check and run the next job in the queue
     final_state = process_queue(new_state)
-    
+
     {:noreply, final_state}
   end
 
   # --- HELPER FUNCTIONS ---
 
-  # Hàm xử lý duyệt queue và spawn task nếu còn trống slot
+  # Function to process the queue and spawn tasks if slots are available
   defp process_queue(state) do
     current_running = map_size(state.running_jobs)
 
     if current_running < state.max_concurrency do
       case :queue.out(state.queue) do
         {{:value, job_fun}, rest_queue} ->
-          # Spawn task bất đồng bộ không link qua Task.Supervisor
+          # Spawn task asynchronously without linking via Task.Supervisor
           task = Task.Supervisor.async_nolink(JobQueueSupervisor, job_fun)
-          
-          # Lưu ref của task vào running map để monitor
+
+          # Save the task ref in the running map to monitor
           new_running = Map.put(state.running_jobs, task.ref, true)
-          
-          # Đệ quy tiếp tục kiểm tra xem còn slot trống nữa không
+
+          # Recursively check if there are more available slots
           process_queue(%{state | queue: rest_queue, running_jobs: new_running})
 
         {:empty, _} ->
-          # Hàng đợi trống, giữ nguyên state
+          # Queue is empty, return current state
           state
       end
     else
-      # Đã đạt giới hạn tối đa concurrency, không spawn thêm
+      # Max concurrency reached, do not spawn more
       state
     end
   end
@@ -131,53 +133,54 @@ defmodule JobQueueTest do
   @moduletag :capture_log
 
   setup do
-    # Khởi động Task.Supervisor phục vụ quản lý job processes
+    # Start Task.Supervisor to manage job processes
     start_supervised!({Task.Supervisor, name: JobQueueSupervisor})
-    # Khởi động JobQueue với giới hạn concurrency tối đa là 2 jobs
+    # Start JobQueue with a maximum concurrency limit of 2 jobs
     start_supervised!({JobQueue, max_concurrency: 2})
     :ok
   end
 
-  test "chỉ chạy song song tối đa max_concurrency jobs" do
-    # Sử dụng Agent để ghi nhận thứ tự và số lượng job đang chạy thực tế
+  test "runs at most max_concurrency jobs concurrently" do
+    # Use an Agent to record the sequence and count of currently running jobs
     {:ok, tracker} = Agent.start_link(fn -> [] end)
-    
+
     job_fun = fn id ->
       fn ->
         Agent.update(tracker, fn running -> running ++ [{:start, id}] end)
-        Process.sleep(100) # Simulating work
+        # Simulating work
+        Process.sleep(100)
         Agent.update(tracker, fn running -> running ++ [{:end, id}] end)
       end
     end
 
-    # Đưa vào 3 jobs
+    # Enqueue 3 jobs
     JobQueue.enqueue(job_fun.(1))
     JobQueue.enqueue(job_fun.(2))
     JobQueue.enqueue(job_fun.(3))
 
-    # Đợi 50ms để chắc chắn job 1 và 2 đã khởi chạy, nhưng job 3 phải xếp hàng
+    # Wait 50ms to ensure jobs 1 and 2 have started, while job 3 is queued
     Process.sleep(50)
     history = Agent.get(tracker, & &1)
-    
-    # Xác thực job 1 và 2 đã start, nhưng job 3 chưa start
+
+    # Assert jobs 1 and 2 started, but job 3 has not
     assert {:start, 1} in history
     assert {:start, 2} in history
     refute {:start, 3} in history
 
-    # Đợi thêm 100ms nữa để job 1 và 2 kết thúc, lúc này job 3 mới được kéo ra chạy
+    # Wait another 100ms for jobs 1 and 2 to finish, at which point job 3 is pulled and run
     Process.sleep(100)
     history2 = Agent.get(tracker, & &1)
-    
-    # Xác thực job 3 đã bắt đầu chạy
+
+    # Assert job 3 has started running
     assert {:start, 3} in history2
-    
-    # Đợi job 3 chạy xong
+
+    # Wait for job 3 to complete
     Process.sleep(100)
     history3 = Agent.get(tracker, & &1)
     assert {:end, 3} in history3
   end
 
-  test "tự động kéo job mới từ queue khi job trước đó bị crash" do
+  test "automatically pulls new job from queue when previous job crashes" do
     {:ok, tracker} = Agent.start_link(fn -> [] end)
 
     normal_job = fn ->
@@ -189,17 +192,17 @@ defmodule JobQueueTest do
       raise "Job crashed intentionally!"
     end
 
-    # Đưa vào 1 job lỗi và 2 job bình thường (max_concurrency = 2)
+    # Enqueue 1 failing job and 2 normal jobs (max_concurrency = 2)
     JobQueue.enqueue(crash_job)
     JobQueue.enqueue(normal_job)
     JobQueue.enqueue(normal_job)
 
-    # Đợi hệ thống xử lý
+    # Wait for system processing
     Process.sleep(100)
 
     history = Agent.get(tracker, & &1)
-    
-    # Dù job 1 bị crash, các job còn lại trong hàng đợi vẫn được kéo ra chạy bình thường
+
+    # Even if job 1 crashes, other jobs in the queue should still be pulled and run normally
     assert :crash_started in history
     assert count_occurrences(history, :normal_started) == 2
   end

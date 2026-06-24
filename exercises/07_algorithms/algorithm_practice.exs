@@ -1,36 +1,36 @@
 # ==============================================================================
-# BÀI TẬP THỰC HÀNH NGÀY 1 (NÂNG CAO 4): THUẬT TOÁN BẰNG LẬP TRÌNH HÀM
+# PRACTICAL EXERCISE DAY 1 (ADVANCED 4): ALGORITHMS IN FUNCTIONAL PROGRAMMING
 # ==============================================================================
-# File này chứa 3 bài tập thuật toán kinh điển được giải bằng lập trình hàm Elixir.
-# Bạn cần hoàn thành logic ở các phần TODO để vượt qua bộ test suite.
+# This file contains 3 classic algorithm exercises solved using functional Elixir.
+# You need to complete the logic in the TODO sections to pass the test suite.
 #
-# Bài 1: Đảo ngược chuỗi từ (Reverse Words)
-#   - Ví dụ: "the sky is blue" -> "blue is sky the"
+# Exercise 1: Reverse Words in a Sentence (Reverse Words)
+#   - Example: "the sky is blue" -> "blue is sky the"
 #
-# Bài 2: Nhóm từ đảo đối xứng (Group Anagrams)
-#   - Ví dụ: ["eat", "tea", "tan", "ate", "nat", "bat"]
+# Exercise 2: Group Anagrams (Group Anagrams)
+#   - Example: ["eat", "tea", "tan", "ate", "nat", "bat"]
 #            -> [["ate", "eat", "tea"], ["nat", "tan"], ["bat"]]
 #
-# Bài 3: Kiểm tra đóng mở ngoặc hợp lệ (Valid Parentheses)
-#   - Sử dụng List làm Stack để kiểm tra tính hợp lệ của ngoặc.
-#   - Ví dụ: "()[]{}" -> true, "([)]" -> false
+# Exercise 3: Valid Parentheses (Valid Parentheses)
+#   - Use a List as a Stack to check the validity of parentheses.
+#   - Example: "()[]{}" -> true, "([)]" -> false
 #
-# Chạy file này bằng lệnh: elixir exercises/07_algorithms/algorithm_practice.exs
+# Run this file with the command: elixir exercises/07_algorithms/algorithm_practice.exs
 # ==============================================================================
 
 defmodule ReverseWords do
   @doc """
-  Nhận vào một chuỗi câu gồm các từ cách nhau bởi khoảng trắng.
-  Đảo ngược thứ tự các từ trong câu đó (bỏ qua khoảng trắng thừa).
-  
-  Yêu cầu: Không sử dụng các thư viện ngoài.
-  Gợi ý:
-  - Dùng `String.split/1` để tách từ (tự động loại bỏ khoảng trắng thừa).
-  - Sử dụng phép toán đệ quy đuôi hoặc pipeline Enum phù hợp.
+  Takes a sentence string consisting of words separated by whitespace.
+  Reverses the order of the words in the sentence (ignoring extra whitespace).
+
+  Requirements: Do not use external libraries.
+  Hints:
+  - Use `String.split/1` to split words (which automatically removes extra whitespace).
+  - Use either a tail-recursive function or an appropriate Enum pipeline.
   """
   def reverse(sentence) do
-    # --- TODO: BẮT ĐẦU VIẾT CODE CỦA BẠN DƯỚI ĐÂY ---
-    # Thay thế dòng dưới bằng code của bạn
+    # --- TODO: START WRITING YOUR CODE BELOW ---
+    # Replace the line below with your code
     _sentence = sentence
     ""
   end
@@ -38,18 +38,18 @@ end
 
 defmodule GroupAnagrams do
   @doc """
-  Nhận vào một list các từ. Nhóm các từ là anagram của nhau lại với nhau.
-  (Anagram là các từ được tạo ra bằng cách sắp xếp lại các ký tự của nhau).
-  
-  Gợi ý:
-  - Với mỗi từ, hãy sắp xếp các ký tự của nó theo bảng chữ cái để tạo ra "key đại diện".
-    Ví dụ: "eat" -> "aet", "tea" -> "aet".
-  - Dùng `Enum.reduce/3` kết hợp với một Map làm Hash Table để nhóm các từ có chung key đại diện.
-  - Sử dụng `Map.values/1` để lấy ra danh sách kết quả cuối cùng.
+  Takes a list of words. Groups words that are anagrams of each other.
+  (An anagram is a word formed by rearranging the letters of another).
+
+  Hints:
+  - For each word, sort its characters alphabetically to create a "representative key".
+    Example: "eat" -> "aet", "tea" -> "aet".
+  - Use `Enum.reduce/3` combined with a Map as a Hash Table to group words sharing the same representative key.
+  - Use `Map.values/1` to extract the final list of results.
   """
   def group(words) do
-    # --- TODO: BẮT ĐẦU VIẾT CODE CỦA BẠN DƯỚI ĐÂY ---
-    # Thay thế dòng dưới bằng code của bạn
+    # --- TODO: START WRITING YOUR CODE BELOW ---
+    # Replace the line below with your code
     _words = words
     []
   end
@@ -57,29 +57,29 @@ end
 
 defmodule ValidParentheses do
   @doc """
-  Nhận vào một chuỗi chỉ chứa các ký tự ngoặc: '(', ')', '{', '}', '[', ']'.
-  Kiểm tra xem chuỗi đóng mở ngoặc có hợp lệ hay không.
-  
-  Yêu cầu: Sử dụng List của Elixir hoạt động như cấu trúc dữ liệu STACK (ngăn xếp).
-  - Duyệt qua từng ký tự của chuỗi:
-    - Nếu là ngoặc mở: đẩy (prepend) vào Stack.
-    - Nếu là ngoặc đóng: so khớp với phần tử đầu Stack. Nếu khớp thì pop (loại bỏ) khỏi Stack,
-      nếu không khớp hoặc Stack rỗng -> Trả về false.
-  - Cuối cùng, nếu Stack rỗng thì chuỗi hợp lệ (true), ngược lại là không hợp lệ (false).
+  Takes a string containing only parentheses characters: '(', ')', '{', '}', '[', ']'.
+  Checks whether the parentheses sequence is valid.
+
+  Requirements: Use an Elixir List acting as a STACK data structure.
+  - Iterate through each character of the string:
+    - If it is an opening parenthesis: push (prepend) it onto the Stack.
+    - If it is a closing parenthesis: match it with the top of the Stack. If matched, pop (remove) it from the Stack;
+      if they do not match or the Stack is empty -> Return false.
+  - Finally, if the Stack is empty, the string is valid (true), otherwise it is invalid (false).
   """
   def valid?(string) do
-    # Convert string thành list các ký tự
+    # Convert string into a list of characters
     chars = String.codepoints(string)
-    # Gọi hàm helper chạy đệ quy đuôi với Stack ban đầu là rỗng []
+    # Call the helper function running tail recursion with an initially empty Stack []
     check(chars, [])
   end
 
-  # --- TODO: BẮT ĐẦU VIẾT CÁC HÀM HELPER ĐỆ QUY CHO BÀI 3 TẠI ĐÂY ---
-  # Gợi ý: Định nghĩa các clause của hàm check/2 sử dụng pattern matching trên head/tail.
-  # (Ví dụ: defp check([], []), do: true)
-  
+  # --- TODO: START WRITING RECURSIVE HELPER FUNCTIONS FOR EXERCISE 3 HERE ---
+  # Hint: Define clauses of the check/2 function using pattern matching on head/tail.
+  # (Example: defp check([], []), do: true)
+
   defp check(_chars, _stack) do
-    # Thay thế bằng logic đệ quy của bạn
+    # Replace with your recursive logic
     false
   end
 end
@@ -90,30 +90,31 @@ ExUnit.start()
 defmodule AlgorithmTest do
   use ExUnit.Case
 
-  test "Bài 1: Đảo ngược chuỗi từ" do
+  test "Exercise 1: Reverse Words" do
     assert ReverseWords.reverse("the sky is blue") == "blue is sky the"
     assert ReverseWords.reverse("  hello world!  ") == "world! hello"
     assert ReverseWords.reverse("a good   example") == "example good a"
   end
 
-  test "Bài 2: Nhóm từ đảo đối xứng (Anagrams)" do
+  test "Exercise 2: Group Anagrams" do
     input = ["eat", "tea", "tan", "ate", "nat", "bat"]
     output = GroupAnagrams.group(input)
-    
-    # Sắp xếp lại kết quả để so khớp không phụ thuộc thứ tự các list con
+
+    # Sort the results so that assertion is order-independent of the sublists
     sorted_output = output |> Enum.map(&Enum.sort/1) |> Enum.sort()
-    
+
     expected = [
       ["ate", "eat", "tea"],
       ["nat", "tan"],
       ["bat"]
     ]
+
     sorted_expected = expected |> Enum.map(&Enum.sort/1) |> Enum.sort()
 
     assert sorted_output == sorted_expected
   end
 
-  test "Bài 3: Kiểm tra ngoặc hợp lệ" do
+  test "Exercise 3: Valid Parentheses" do
     assert ValidParentheses.valid?("()") == true
     assert ValidParentheses.valid?("()[]{}") == true
     assert ValidParentheses.valid?("(]") == false
@@ -125,7 +126,7 @@ defmodule AlgorithmTest do
 end
 
 # ==============================================================================
-# HƯỚNG DẪN / ĐÁP ÁN GỢI Ý (ĐỪNG XÓA DÒNG NÀY ĐỂ BẠN CÓ THỂ XEM KHI CẦN)
+# INSTRUCTIONS / SUGGESTED ANSWERS (DO NOT DELETE THIS LINE SO YOU CAN REFER TO IT)
 # ==============================================================================
 #
 # defmodule ReverseWords do

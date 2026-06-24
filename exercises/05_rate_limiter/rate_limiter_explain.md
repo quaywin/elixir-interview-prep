@@ -1,16 +1,16 @@
-# 💡 Giải Thích Bài Tập: Rate Limiter (`GenServer` & `Timer`)
+# 💡 Exercise Explanation: Rate Limiter (`GenServer` & `Timer`)
 
-## 1. Yêu Cầu Thực Tế & Thiết Kế
-Rate Limiter (Bộ giới hạn tần suất) là thành phần bắt buộc trong các ứng dụng Web/APIs công cộng để chống tấn công DDoS, bảo vệ tài nguyên hệ thống khỏi bị cạn kiệt, hoặc giới hạn lưu lượng sử dụng của từng gói tài khoản (API Quota).
+## 1. Practical Requirements & Design
+A Rate Limiter is a mandatory component in public Web applications/APIs to prevent DDoS attacks, protect system resources from exhaustion, or limit the usage of specific account plans (API Quota).
 
-**Yêu cầu thiết kế:**
-*   Một GenServer tập trung quản lý bộ đếm số request của từng IP.
-*   Nếu số request của 1 IP vượt quá `max_requests` trong vòng `interval` mili-giây, chặn các request tiếp theo của IP đó.
-*   Cần tự động dọn dẹp bộ đếm (reset) cho mỗi IP khi hết chu kỳ `interval` để tránh việc bộ nhớ RAM tăng lên vô hạn do lưu trữ dữ liệu IP rác.
+**Design requirements:**
+*   A centralized GenServer manages the request count of each IP.
+*   If the request count of an IP exceeds `max_requests` within `interval` milliseconds, block subsequent requests from that IP.
+*   Automatically clear (reset) the counter for each IP when the `interval` expires to prevent RAM usage from growing indefinitely due to storing stale IP data.
 
 ---
 
-## 2. Giải Thích Code Triển Khai
+## 2. Implementation Code Explanation
 
 ```elixir
 defmodule RateLimiter do
@@ -20,20 +20,20 @@ defmodule RateLimiter do
 
   @impl true
   def handle_call({:request, ip}, _from, state) do
-    # 1. Lấy số request hiện tại của IP trong Map state.ips (mặc định là 0)
+    # 1. Get the current request count of the IP in the state.ips map (default is 0)
     current_count = Map.get(state.ips, ip, 0)
 
     if current_count >= state.max_requests do
-      # 2. Vượt ngưỡng -> Từ chối request, giữ nguyên state
+      # 2. Limit exceeded -> Reject the request, keep the state unchanged
       {:reply, {:error, :rate_limited}, state}
     else
       new_count = current_count + 1
       new_ips = Map.put(state.ips, ip, new_count)
 
-      # 3. Kỹ thuật Reset Timer:
-      # Nếu đây là request đầu tiên của IP này trong chu kỳ hiện tại (count = 0)
+      # 3. Reset Timer Technique:
+      # If this is the first request from this IP in the current cycle (count == 0)
       if current_count == 0 do
-        # Đăng ký một timer gửi tin nhắn bất đồng bộ :reset_ip cho chính nó sau `state.interval` ms
+        # Register a timer to asynchronously send a :reset_ip message to itself after `state.interval` ms
         :erlang.send_after(state.interval, self(), {:reset_ip, ip})
       end
 
@@ -43,7 +43,7 @@ defmodule RateLimiter do
 
   @impl true
   def handle_info({:reset_ip, ip}, state) do
-    # 4. Khi timer kích hoạt -> Xóa IP khỏi map bộ đếm để giải phóng RAM
+    # 4. When the timer triggers -> Delete the IP from the counter map to free up RAM
     new_ips = Map.delete(state.ips, ip)
     {:noreply, %{state | ips: new_ips}}
   end
@@ -52,17 +52,17 @@ end
 
 ---
 
-## 3. Các Điểm Quan Trọng Dưới Góc Nhìn Kỹ Thuật
+## 3. Key Points from a Technical Perspective
 
-### 3.1. Tại sao dùng `:erlang.send_after/3` thay vì `Process.sleep/1`?
-*   `Process.sleep/1` sẽ block hoàn toàn process hiện tại. Nếu bạn sleep 5 giây trong GenServer, nó sẽ đứng im không thể nhận bất kỳ request nào khác của các IP khác, làm sập toàn bộ hệ thống API.
-*   `:erlang.send_after/3` là cơ chế **không chặn (non-blocking)**. Nó đăng ký một sự kiện hẹn giờ trực tiếp với Erlang Run-time System (ERTS). ERTS sẽ tự động đẩy một tin nhắn `{:reset_ip, ip}` vào mailbox của GenServer khi hết thời gian, trong khi GenServer vẫn tiếp tục nhận các request khác bình thường.
+### 3.1. Why use `:erlang.send_after/3` instead of `Process.sleep/1`?
+*   `Process.sleep/1` completely blocks the current process. If you sleep for 5 seconds inside the GenServer, it will hang and be unable to handle any other requests from different IPs, bringing down the entire API system.
+*   `:erlang.send_after/3` is a **non-blocking** mechanism. It registers a timer event directly with the Erlang Run-time System (ERTS). ERTS will automatically push a `{:reset_ip, ip}` message into the GenServer's mailbox when the timer expires, while the GenServer continues to receive other requests normally.
 
-### 3.2. Tiết Kiệm Bộ Nhớ (Memory Overhead)
-*   Nếu chúng ta không xóa IP ra khỏi map `state.ips` khi hết chu kỳ, sau một vài ngày hoạt động với hàng triệu IP khách vãng lai, Map này sẽ phình to ra hàng Gigabytes bộ nhớ RAM.
-*   Gọi `Map.delete(state.ips, ip)` khi hết chu kỳ giúp đảm bảo bộ nhớ của GenServer luôn được giải phóng kịp thời, chỉ lưu trữ thông tin của các IP đang hoạt động tích cực trong vòng vài giây gần nhất.
+### 3.2. Saving Memory (Memory Overhead)
+*   If we do not remove IPs from the `state.ips` map when the cycle ends, after a few days of operation with millions of guest client IPs, this Map will bloat to gigabytes of RAM.
+*   Calling `Map.delete(state.ips, ip)` when the cycle expires ensures that the GenServer's memory is released in a timely manner, only storing information for IPs that have been actively requesting within the last few seconds.
 
-### 3.3. Hạn Chế Của Giải Pháp Slide Window (Cửa sổ trượt)
-*   Giải pháp trên áp dụng thuật toán **Fixed Window (Cửa sổ cố định)**: Reset bộ đếm đúng $T$ mili-giây kể từ request đầu tiên.
-*   *Lược đồ lỗi (Failure Mode):* Nếu giới hạn là 100 requests/phút. User có thể gửi 100 requests ở giây thứ 59, và tiếp tục gửi 100 requests ở giây thứ 61 (ngay sau khi reset). Kết quả là user đã gửi 200 requests chỉ trong 2 giây mà không bị chặn.
-*   *Giải pháp Senior hơn:* Sử dụng thuật toán **Token Bucket** hoặc **Leaky Bucket** (sử dụng Redis sorted sets hoặc thư viện như `ExRated` / `Hammer` trong môi trường distributed thực tế).
+### 3.3. Limitations of the Fixed Window Solution
+*   The solution above applies the **Fixed Window** algorithm: it resets the counter exactly $T$ milliseconds after the first request.
+*   *Failure Mode:* If the limit is 100 requests/minute, a user could send 100 requests at second 59, and another 100 requests at second 61 (right after the reset). Consequently, the user has sent 200 requests within just 2 seconds without being blocked.
+*   *More Senior Solution:* Use a **Token Bucket** or **Leaky Bucket** algorithm (utilizing Redis sorted sets or libraries like `ExRated` / `Hammer` in a real-world distributed environment).

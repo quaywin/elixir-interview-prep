@@ -1,23 +1,23 @@
 # ==============================================================================
-# BÀI TẬP THỰC HÀNH NÂNG CAO: BATCH PROCESSOR (CONCURRENCY & BATCHING)
+# ADVANCED PRACTICAL EXERCISE: BATCH PROCESSOR (CONCURRENCY & BATCHING)
 # ==============================================================================
-# Đề bài: Xây dựng một GenServer tên là `BatchProcessor` dùng để gom nhóm dữ liệu
-# (ví dụ: log records hoặc database writes) và xử lý chúng theo lô (batch).
+# Objective: Build a GenServer named `BatchProcessor` to batch data items
+# (e.g., log records or database writes) and process them in batches.
 #
-# Yêu cầu:
-# 1. GenServer khởi chạy nhận tham số cấu hình:
-#    - `batch_size`: Số lượng item tối đa trong một batch (ví dụ: 5 items).
-#    - `timeout`: Thời gian tối đa (ms) chờ gom đủ batch trước khi tự động flush (ví dụ: 1000ms).
-# 2. Định nghĩa API client:
-#    - `add_item(item)`: Thêm một item bất đồng bộ vào batch (cast hoặc call).
-#    - `flush()`: Chủ động yêu cầu flush các items hiện có bất kỳ lúc nào.
-# 3. Khi gom đủ `batch_size` items HOẶC hết thời gian `timeout` mà chưa đủ batch,
-#    GenServer phải gửi toàn bộ batch đó tới hàm xử lý `process_batch(items)`
-#    và dọn dẹp queue trong state.
-# 4. Sử dụng `:erlang.send_after/3` để quản lý timeout flush. Cần cẩn thận hủy timer cũ
-#    nếu batch được flush sớm để tránh double-flush.
+# Requirements:
+# 1. The GenServer accepts configuration parameters upon startup:
+#    - `batch_size`: The maximum number of items in a batch (e.g., 5 items).
+#    - `timeout`: The maximum waiting time (ms) to collect a batch before automatically flushing (e.g., 1000ms).
+# 2. Define the client API:
+#    - `add_item(item)`: Add an item asynchronously to the batch (cast or call).
+#    - `flush()`: Proactively request a flush of current items at any time.
+# 3. When `batch_size` items are collected OR the `timeout` expires without a full batch,
+#    the GenServer must send the entire batch to the handler function `process_batch(items)`
+#    and clear the queue in the state.
+# 4. Use `:erlang.send_after/3` to manage the timeout flush. Be careful to cancel the old timer
+#    if the batch is flushed early to prevent double-flushing.
 #
-# Chạy file này bằng lệnh: elixir batcher_practice.exs
+# Run this file with the command: elixir batcher_practice.exs
 # ==============================================================================
 
 defmodule BatchProcessor do
@@ -30,14 +30,14 @@ defmodule BatchProcessor do
   end
 
   @doc """
-  Thêm một item vào hàng đợi xử lý.
+  Adds an item to the processing queue.
   """
   def add_item(item) do
     GenServer.call(__MODULE__, {:add_item, item})
   end
 
   @doc """
-  Chủ động flush toàn bộ items hiện có trong queue để xử lý ngay lập tức.
+  Proactively flushes all current items in the queue for immediate processing.
   """
   def flush do
     GenServer.call(__MODULE__, :flush)
@@ -49,7 +49,9 @@ defmodule BatchProcessor do
   def init(opts) do
     batch_size = Keyword.get(opts, :batch_size, 5)
     timeout = Keyword.get(opts, :timeout, 1000)
-    callback = Keyword.get(opts, :callback, fn items -> IO.inspect(items, label: "Processed batch") end)
+
+    callback =
+      Keyword.get(opts, :callback, fn items -> IO.inspect(items, label: "Processed batch") end)
 
     state = %{
       batch_size: batch_size,
@@ -71,11 +73,13 @@ defmodule BatchProcessor do
       state.callback.(new_queue)
       {:reply, :ok, %{state | queue: [], timer: nil}}
     else
-      timer = if is_nil(state.timer) do
-        :erlang.send_after(state.timeout, self(), :timeout_flush)
-      else
-        state.timer
-      end
+      timer =
+        if is_nil(state.timer) do
+          :erlang.send_after(state.timeout, self(), :timeout_flush)
+        else
+          state.timer
+        end
+
       {:reply, :ok, %{state | queue: new_queue, timer: timer}}
     end
   end
@@ -83,9 +87,11 @@ defmodule BatchProcessor do
   @impl true
   def handle_call(:flush, _from, state) do
     cancel_timer(state.timer)
+
     if length(state.queue) > 0 do
       state.callback.(state.queue)
     end
+
     {:reply, :ok, %{state | queue: [], timer: nil}}
   end
 
@@ -94,10 +100,11 @@ defmodule BatchProcessor do
     if length(state.queue) > 0 do
       state.callback.(state.queue)
     end
+
     {:noreply, %{state | queue: [], timer: nil}}
   end
 
-  # Helper để hủy timer an toàn
+  # Helper to cancel a timer safely
   defp cancel_timer(nil), do: :ok
   defp cancel_timer(timer), do: :erlang.cancel_timer(timer)
 end
@@ -110,37 +117,37 @@ defmodule BatchProcessorTest do
   @moduletag :capture_log
 
   setup do
-    # Giả lập một test agent để kiểm tra xem các batch có được gửi đúng không
+    # Simulate a test agent to check if the batches are sent correctly
     {:ok, agent} = Agent.start_link(fn -> [] end)
     callback = fn items -> Agent.update(agent, fn state -> state ++ [items] end) end
 
-    # Khởi động BatchProcessor với batch_size = 3 và timeout = 100ms
+    # Start BatchProcessor with batch_size = 3 and timeout = 100ms
     start_supervised!({BatchProcessor, batch_size: 3, timeout: 100, callback: callback})
-    
+
     {:ok, agent: agent}
   end
 
-  test "gom đủ batch_size thì tự động xử lý và reset queue", %{agent: agent} do
+  test "automatically processes and resets the queue when batch_size is reached", %{agent: agent} do
     assert :ok = BatchProcessor.add_item("item_1")
     assert :ok = BatchProcessor.add_item("item_2")
-    # Chưa đủ 3 items, callback chưa được gọi
+    # Not enough items (under 3), callback not called yet
     assert Agent.get(agent, & &1) == []
 
     assert :ok = BatchProcessor.add_item("item_3")
-    # Đủ 3 items, callback phải được gọi
+    # Exactly 3 items, callback must be called
     assert Agent.get(agent, & &1) == [["item_1", "item_2", "item_3"]]
   end
 
-  test "tự động flush sau khi hết thời gian timeout dù chưa đủ batch_size", %{agent: agent} do
+  test "automatically flushes after timeout even if batch_size is not reached", %{agent: agent} do
     assert :ok = BatchProcessor.add_item("item_1")
     assert :ok = BatchProcessor.add_item("item_2")
-    # Đợi 150ms (> timeout 100ms)
+    # Wait 150ms (> timeout 100ms)
     Process.sleep(150)
-    # Hệ thống phải tự động flush
+    # The system must automatically flush
     assert Agent.get(agent, & &1) == [["item_1", "item_2"]]
   end
 
-  test "chủ động flush bằng client API", %{agent: agent} do
+  test "proactively flushes using the client API", %{agent: agent} do
     assert :ok = BatchProcessor.add_item("item_1")
     assert :ok = BatchProcessor.flush()
     assert Agent.get(agent, & &1) == [["item_1"]]
